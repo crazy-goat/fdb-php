@@ -32,3 +32,5 @@ parameters:
           path: src/Future/*.php
         - identifier: property.notFound
           path: src/Future/*.php
+        - identifier: method.notFound
+          path: src/FDBException.php

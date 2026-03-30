@@ -32,6 +32,7 @@ final class NativeClient
         fdb_error_t fdb_select_api_version_impl(int runtime_version, int header_version);
         int fdb_get_max_api_version();
         const char* fdb_get_error(fdb_error_t code);
+        fdb_bool_t fdb_error_predicate(int predicate_test, fdb_error_t code);
 
         fdb_error_t fdb_network_set_option(int option, const void* value, int value_length);
         fdb_error_t fdb_setup_network();
