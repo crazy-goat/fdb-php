@@ -114,6 +114,18 @@ final class Tuple
     }
 
     /**
+     * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $tuple1
+     * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $tuple2
+     */
+    public static function compare(array $tuple1, array $tuple2): int
+    {
+        $packed1 = self::pack($tuple1);
+        $packed2 = self::pack($tuple2);
+
+        return $packed1 <=> $packed2;
+    }
+
+    /**
      * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $elements
      * @return array{string, string}
      */
