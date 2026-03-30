@@ -9,16 +9,31 @@ use CrazyGoat\FoundationDB\Option\DatabaseOptions;
 use FFI;
 use FFI\CData;
 
-final readonly class Database implements Transactor, ReadTransactor
+final class Database implements Transactor, ReadTransactor
 {
+    private bool $closed = false;
+
     public function __construct(
-        private CData $dpointer,
-        private NativeClient $client,
+        private readonly CData $dpointer,
+        private readonly NativeClient $client,
     ) {
+    }
+
+    public function close(): void
+    {
+        if ($this->closed) {
+            return;
+        }
+
+        $this->client->fdb->fdb_database_destroy($this->dpointer);
+        $this->closed = true;
+        FoundationDB::removeDatabase($this);
     }
 
     public function createTransaction(): Transaction
     {
+        $this->ensureOpen();
+
         $trPointer = $this->client->fdb->new('FDBTransaction*');
         $this->client->checkError(
             $this->client->fdb->fdb_database_create_transaction($this->dpointer, FFI::addr($trPointer)),
@@ -29,6 +44,8 @@ final readonly class Database implements Transactor, ReadTransactor
 
     public function openTenant(string $name): Tenant
     {
+        $this->ensureOpen();
+
         $tpointer = $this->client->fdb->new('FDBTenant*');
         $this->client->checkError(
             $this->client->fdb->fdb_database_open_tenant(
@@ -346,6 +363,15 @@ final readonly class Database implements Transactor, ReadTransactor
 
     public function __destruct()
     {
-        $this->client->fdb->fdb_database_destroy($this->dpointer);
+        if (!$this->closed) {
+            $this->client->fdb->fdb_database_destroy($this->dpointer);
+        }
+    }
+
+    private function ensureOpen(): void
+    {
+        if ($this->closed) {
+            throw new \LogicException('Database has been closed');
+        }
     }
 }
