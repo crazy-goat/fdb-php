@@ -117,6 +117,33 @@ final readonly class Database implements Transactor, ReadTransactor
         );
     }
 
+    /**
+     * @return list<KeyValue>
+     */
+    public function getRangeAll(
+        string|KeySelector $begin,
+        string|KeySelector $end,
+        ?RangeOptions $options = null,
+    ): array {
+        /** @var list<KeyValue> */
+        return $this->transact(
+            fn (Transaction $tr): array => $tr->getRangeAll($begin, $end, $options),
+        );
+    }
+
+    /**
+     * @return list<KeyValue>
+     */
+    public function getRangeAllStartsWith(
+        string $prefix,
+        ?RangeOptions $options = null,
+    ): array {
+        /** @var list<KeyValue> */
+        return $this->transact(
+            fn (Transaction $tr): array => $tr->getRangeAllStartsWith($prefix, $options),
+        );
+    }
+
     public function getKey(KeySelector $selector): string
     {
         /** @var string */
