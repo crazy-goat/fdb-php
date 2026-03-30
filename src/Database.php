@@ -355,6 +355,8 @@ final class Database implements Transactor, ReadTransactor
     /**
      * Reboots a FoundationDB worker process.
      *
+     * @deprecated Use $database->admin()->rebootWorker() instead. This method will be removed in a future version.
+     *
      * @param string $address The network address of the worker to reboot (e.g., "127.0.0.1:4500")
      * @param bool $checkFile If true, checks that a file exists at the specified path before rebooting
      * @param int $suspendDuration Duration in seconds to suspend the process (0 for immediate restart)
@@ -366,24 +368,7 @@ final class Database implements Transactor, ReadTransactor
      */
     public function rebootWorker(string $address, bool $checkFile = false, int $suspendDuration = 0): void
     {
-        $this->ensureOpen();
-
-        $future = new Future\FutureInt64(
-            $this->client->fdb->fdb_database_reboot_worker(
-                $this->dpointer,
-                $address,
-                strlen($address),
-                $checkFile ? 1 : 0,
-                $suspendDuration,
-            ),
-            $this->client,
-        );
-
-        $result = $future->await();
-
-        if ($result === 0) {
-            throw new RebootWorkerException($address);
-        }
+        $this->admin()->rebootWorker($address, $checkFile, $suspendDuration);
     }
 
     public function options(): DatabaseOptions
@@ -407,6 +392,12 @@ final class Database implements Transactor, ReadTransactor
     public function getClient(): NativeClient
     {
         return $this->client;
+    }
+
+    /** @internal */
+    public function getDatabasePointer(): \FFI\CData
+    {
+        return $this->dpointer;
     }
 
     /**
