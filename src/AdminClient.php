@@ -22,7 +22,6 @@ final readonly class AdminClient
 
     public function __construct(
         private Database $database,
-        /** @phpstan-ignore property.onlyWritten */
         private NativeClient $client
     ) {
     }
@@ -93,6 +92,39 @@ final readonly class AdminClient
         }
 
         return $tenants;
+    }
+
+    /**
+     * Reboots a FoundationDB worker process.
+     *
+     * @param string $address The network address of the worker to reboot (e.g., "127.0.0.1:4500")
+     * @param bool $checkFile If true, checks that a file exists at the specified path before rebooting
+     * @param int $suspendDuration Duration in seconds to suspend the process (0 for immediate restart)
+     *
+     * @throws RebootWorkerException If the reboot operation fails
+     *
+     * @warning Do not close the Database immediately after calling this method, as the operation
+     *          may still be in progress. Allow sufficient time for the operation to complete.
+     */
+    public function rebootWorker(string $address, bool $checkFile = false, int $suspendDuration = 0): void
+    {
+        $future = new Future\FutureInt64(
+            // @phpstan-ignore method.notFound
+            $this->client->fdb->fdb_database_reboot_worker(
+                $this->database->getDatabasePointer(),
+                $address,
+                strlen($address),
+                $checkFile ? 1 : 0,
+                $suspendDuration,
+            ),
+            $this->client,
+        );
+
+        $result = $future->await();
+
+        if ($result === 0) {
+            throw new RebootWorkerException($address);
+        }
     }
 
     /**
