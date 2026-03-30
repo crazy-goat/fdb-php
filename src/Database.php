@@ -27,6 +27,21 @@ final readonly class Database implements Transactor, ReadTransactor
         return new Transaction($trPointer, $this, $this->client);
     }
 
+    public function openTenant(string $name): Tenant
+    {
+        $tpointer = $this->client->fdb->new('FDBTenant*');
+        $this->client->checkError(
+            $this->client->fdb->fdb_database_open_tenant(
+                $this->dpointer,
+                $name,
+                strlen($name),
+                FFI::addr($tpointer),
+            ),
+        );
+
+        return new Tenant($tpointer, $this, $this->client);
+    }
+
     public function transact(callable $fn): mixed
     {
         $tr = $this->createTransaction();

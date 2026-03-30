@@ -153,6 +153,10 @@ jobs:
           fdbcli -C fdb.cluster --exec "status" || true
           exit 1
 
+      - name: Configure tenant mode
+        run: |
+          fdbcli -C fdb.cluster --exec "configure tenant_mode=optional_experimental"
+
       - name: Run E2E tests
         env:
           FDB_CLUSTER_FILE: fdb.cluster

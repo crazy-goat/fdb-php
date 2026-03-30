@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Future\FutureInt64;
 use FFI;
 use FFI\CData;
 
@@ -24,6 +25,16 @@ final readonly class Tenant
         );
 
         return new Transaction($trPointer, $this->db, $this->client);
+    }
+
+    public function getId(): int
+    {
+        $future = new FutureInt64(
+            $this->client->fdb->fdb_tenant_get_id($this->tpointer),
+            $this->client,
+        );
+
+        return $future->await();
     }
 
     public function __destruct()
