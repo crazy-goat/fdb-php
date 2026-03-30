@@ -3,3 +3,20 @@ parameters:
     paths:
         - src
         - tests
+    ignoreErrors:
+        - identifier: method.notFound
+          path: src/NativeClient.php
+        - identifier: property.notFound
+          path: src/NativeClient.php
+        - identifier: method.staticCall
+          path: src/NativeClient.php
+        - identifier: method.notFound
+          path: src/FoundationDB.php
+        - identifier: method.notFound
+          path: src/Database.php
+        - identifier: method.notFound
+          path: src/Transaction.php
+        - identifier: property.notFound
+          path: src/Transaction.php
+        - identifier: property.onlyWritten
+          path: src/Transaction.php

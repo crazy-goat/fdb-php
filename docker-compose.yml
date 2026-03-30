@@ -28,7 +28,7 @@ services:
     working_dir: /app
     stdin_open: true
     tty: true
-    entrypoint: ["/bin/bash", "-c", "echo \"docker:docker@fdb:4500\" > /app/fdb.cluster && exec tail -f /dev/null"]
+    entrypoint: ["/bin/bash", "-c", "echo \"docker:docker@$(getent hosts fdb | awk '{print $1}'):4500\" > /app/fdb.cluster && exec tail -f /dev/null"]
 
 volumes:
   fdb-data:
