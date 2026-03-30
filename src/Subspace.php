@@ -55,6 +55,32 @@ class Subspace implements KeyConvertible
 
     /**
      * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $tuple
+     */
+    public function packWithVersionstamp(array $tuple): string
+    {
+        $packed = Tuple::packWithVersionstamp($tuple);
+        $prefixLength = strlen($this->rawPrefix);
+
+        if ($prefixLength === 0) {
+            return $packed;
+        }
+
+        $body = substr($packed, 0, -4);
+        $offsetBytes = substr($packed, -4);
+        $offsetData = unpack('V', $offsetBytes);
+
+        if ($offsetData === false) {
+            throw new \RuntimeException('Failed to read versionstamp offset');
+        }
+
+        /** @var int $originalOffset */
+        $originalOffset = $offsetData[1];
+
+        return $this->rawPrefix . $body . pack('V', $originalOffset + $prefixLength);
+    }
+
+    /**
+     * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $tuple
      * @return array{string, string}
      */
     public function range(array $tuple = []): array
