@@ -87,6 +87,34 @@ final class FoundationDB
         return $database;
     }
 
+    public static function openWithConnectionString(string $connectionString): Database
+    {
+        if (self::$apiVersion === null) {
+            throw new \LogicException(
+                'API version must be set before opening a database. Call FoundationDB::apiVersion() first.',
+            );
+        }
+
+        $cacheKey = 'conn:' . $connectionString;
+
+        if (isset(self::$databases[$cacheKey])) {
+            return self::$databases[$cacheKey];
+        }
+
+        $client = NativeClient::getInstance();
+        $client->ensureNetwork();
+
+        $dbPointer = $client->fdb->new('FDBDatabase*');
+        $client->checkError(
+            $client->fdb->fdb_create_database_from_connection_string($connectionString, FFI::addr($dbPointer)),
+        );
+
+        $database = new Database($dbPointer, $client);
+        self::$databases[$cacheKey] = $database;
+
+        return $database;
+    }
+
     /** @internal */
     public static function reset(): void
     {
