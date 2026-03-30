@@ -44,7 +44,7 @@ A `docker-compose.yml` file is available in this repository for easy local devel
 Install the library via Composer:
 
 ```bash
-composer require crazy-goat/foundationdb
+composer require crazy-goat/fdb-php
 ```
 
 ## Verifying PHP Extensions

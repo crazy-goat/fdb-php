@@ -35,7 +35,7 @@ A full-featured [FoundationDB](https://www.foundationdb.org/) client for PHP, bu
 ## Installation
 
 ```bash
-composer require crazy-goat/foundationdb
+composer require crazy-goat/fdb-php
 ```
 
 Make sure `libfdb_c.so` is installed and accessible. On Ubuntu/Debian:
