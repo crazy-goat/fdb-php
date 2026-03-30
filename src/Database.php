@@ -409,6 +409,16 @@ final class Database implements Transactor, ReadTransactor
         return $this->client;
     }
 
+    /**
+     * Get an AdminClient for cluster administration operations.
+     *
+     * @return AdminClient Client for administrative operations
+     */
+    public function admin(): AdminClient
+    {
+        return new AdminClient($this, $this->client);
+    }
+
     public function __destruct()
     {
         if (!$this->closed) {
