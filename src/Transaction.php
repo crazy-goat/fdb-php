@@ -152,34 +152,34 @@ final class Transaction extends ReadTransaction implements Transactor
         );
     }
 
-    public function add(string $key, string $param): void
+    public function add(string $key, int $param): void
     {
-        $this->atomicOp(MutationType::Add, $key, $param);
+        $this->atomicOp(MutationType::Add, $key, pack('P', $param));
     }
 
-    public function bitAnd(string $key, string $param): void
+    public function bitAnd(string $key, int $param): void
     {
-        $this->atomicOp(MutationType::BitAnd, $key, $param);
+        $this->atomicOp(MutationType::BitAnd, $key, pack('P', $param));
     }
 
-    public function bitOr(string $key, string $param): void
+    public function bitOr(string $key, int $param): void
     {
-        $this->atomicOp(MutationType::BitOr, $key, $param);
+        $this->atomicOp(MutationType::BitOr, $key, pack('P', $param));
     }
 
-    public function bitXor(string $key, string $param): void
+    public function bitXor(string $key, int $param): void
     {
-        $this->atomicOp(MutationType::BitXor, $key, $param);
+        $this->atomicOp(MutationType::BitXor, $key, pack('P', $param));
     }
 
-    public function max(string $key, string $param): void
+    public function max(string $key, int $param): void
     {
-        $this->atomicOp(MutationType::Max, $key, $param);
+        $this->atomicOp(MutationType::Max, $key, pack('P', $param));
     }
 
-    public function min(string $key, string $param): void
+    public function min(string $key, int $param): void
     {
-        $this->atomicOp(MutationType::Min, $key, $param);
+        $this->atomicOp(MutationType::Min, $key, pack('P', $param));
     }
 
     public function byteMax(string $key, string $param): void

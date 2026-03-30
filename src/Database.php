@@ -266,42 +266,55 @@ final class Database implements Transactor, ReadTransactor
         }
     }
 
-    public function add(string $key, string $param): void
+    /**
+     * Read a key and decode its value as a little-endian unsigned 64-bit integer.
+     *
+     * This is the counterpart to add(), max(), min() and other integer-based atomic operations.
+     *
+     * @return ?int null if the key does not exist
+     */
+    public function getInt(string|KeyConvertible $key): ?int
+    {
+        /** @var ?int */
+        return $this->transact(fn (Transaction $tr): ?int => $tr->getInt($key));
+    }
+
+    public function add(string $key, int $param): void
     {
         $this->transact(function (Transaction $tr) use ($key, $param): void {
             $tr->add($key, $param);
         });
     }
 
-    public function bitAnd(string $key, string $param): void
+    public function bitAnd(string $key, int $param): void
     {
         $this->transact(function (Transaction $tr) use ($key, $param): void {
             $tr->bitAnd($key, $param);
         });
     }
 
-    public function bitOr(string $key, string $param): void
+    public function bitOr(string $key, int $param): void
     {
         $this->transact(function (Transaction $tr) use ($key, $param): void {
             $tr->bitOr($key, $param);
         });
     }
 
-    public function bitXor(string $key, string $param): void
+    public function bitXor(string $key, int $param): void
     {
         $this->transact(function (Transaction $tr) use ($key, $param): void {
             $tr->bitXor($key, $param);
         });
     }
 
-    public function max(string $key, string $param): void
+    public function max(string $key, int $param): void
     {
         $this->transact(function (Transaction $tr) use ($key, $param): void {
             $tr->max($key, $param);
         });
     }
 
-    public function min(string $key, string $param): void
+    public function min(string $key, int $param): void
     {
         $this->transact(function (Transaction $tr) use ($key, $param): void {
             $tr->min($key, $param);

@@ -65,7 +65,7 @@ final readonly class HighContentionAllocator
 
             $tr->add(
                 $this->counters->pack([$start]),
-                pack('P', 1),
+                1,
             );
 
             $candidate = $start + random_int(0, $window - 1);
