@@ -31,8 +31,16 @@ final class DirectoryTest extends TestCase
             self::$initialized = true;
         }
 
+        // Clear all directory-related data
         self::$db->transact(function (Transaction $tr): void {
+            // Clear directory layer prefix
             $tr->clearRangeStartsWith("\xFE");
+            // Clear any test data that might interfere
+            $tr->clearRangeStartsWith("test_");
+            $tr->clearRangeStartsWith("app_");
+            $tr->clearRangeStartsWith("user_");
+            $tr->clearRangeStartsWith("tenant_");
+            $tr->clearRangeStartsWith("partition_");
         });
 
         $this->dir = new DirectoryLayer();
