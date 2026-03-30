@@ -10,6 +10,7 @@ final readonly class FutureKvResult
 {
     /**
      * @param list<KeyValue> $kvs
+     * @param int<0, max> $count
      */
     public function __construct(
         public array $kvs,

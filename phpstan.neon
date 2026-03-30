@@ -21,7 +21,11 @@ parameters:
         - identifier: method.notFound
           path: src/ReadTransaction.php
         - identifier: method.notFound
+          path: src/RangeResult.php
+        - identifier: method.notFound
           path: src/Tenant.php
+        - identifier: method.notFound
+          path: src/Option/NetworkOptions.php
         - identifier: property.onlyWritten
           path: src/Snapshot.php
         - identifier: method.notFound

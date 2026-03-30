@@ -9,6 +9,7 @@ use CrazyGoat\FoundationDB\Enum\MutationType;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
 use CrazyGoat\FoundationDB\Future\FutureKey;
 use CrazyGoat\FoundationDB\Future\FutureVoid;
+use CrazyGoat\FoundationDB\Option\TransactionOptions;
 use FFI;
 use FFI\CData;
 
@@ -61,7 +62,7 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function clearRangeStartsWith(string $prefix): void
     {
-        $end = $this->strinc($prefix);
+        $end = KeyUtil::strinc($prefix);
 
         if ($end === null) {
             return;
@@ -244,6 +245,11 @@ final class Transaction extends ReadTransaction implements Transactor
         $this->addWriteConflictRange($key, $key . "\x00");
     }
 
+    public function options(): TransactionOptions
+    {
+        return new TransactionOptions($this);
+    }
+
     public function setOption(int $option, ?string $value = null): void
     {
         $this->client->checkError(
@@ -269,26 +275,5 @@ final class Transaction extends ReadTransaction implements Transactor
     public function __destruct()
     {
         $this->client->fdb->fdb_transaction_destroy($this->tpointer);
-    }
-
-    private function strinc(string $key): ?string
-    {
-        $unpacked = unpack('C*', $key);
-
-        if ($unpacked === false) {
-            return null;
-        }
-
-        $bytes = array_values($unpacked);
-        $length = count($bytes);
-
-        for ($i = $length - 1; $i >= 0; $i--) {
-            if ($bytes[$i] < 0xFF) {
-                $bytes[$i]++;
-                return pack('C*', ...array_slice($bytes, 0, $i + 1));
-            }
-        }
-
-        return null;
     }
 }

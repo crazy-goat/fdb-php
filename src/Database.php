@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Option\DatabaseOptions;
 use FFI;
 use FFI\CData;
 
@@ -86,6 +87,38 @@ final readonly class Database implements Transactor, ReadTransactor
         $this->transact(function (Transaction $tr) use ($prefix): void {
             $tr->clearRangeStartsWith($prefix);
         });
+    }
+
+    /**
+     * @return list<KeyValue>
+     */
+    public function getRange(
+        string|KeySelector $begin,
+        string|KeySelector $end,
+        ?RangeOptions $options = null,
+    ): array {
+        /** @var list<KeyValue> */
+        return $this->transact(
+            fn (Transaction $tr): array => $tr->getRange($begin, $end, $options)->toArray(),
+        );
+    }
+
+    /**
+     * @return list<KeyValue>
+     */
+    public function getRangeStartsWith(
+        string $prefix,
+        ?RangeOptions $options = null,
+    ): array {
+        /** @var list<KeyValue> */
+        return $this->transact(
+            fn (Transaction $tr): array => $tr->getRangeStartsWith($prefix, $options)->toArray(),
+        );
+    }
+
+    public function options(): DatabaseOptions
+    {
+        return new DatabaseOptions($this);
     }
 
     public function setOption(int $option, ?string $value = null): void

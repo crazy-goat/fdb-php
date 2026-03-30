@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Option\NetworkOptions;
 use FFI;
 
 final class FoundationDB
@@ -38,6 +39,11 @@ final class FoundationDB
         }
 
         self::$apiVersion = $version;
+    }
+
+    public static function networkOptions(): NetworkOptions
+    {
+        return new NetworkOptions(NativeClient::getInstance());
     }
 
     public static function getApiVersion(): ?int

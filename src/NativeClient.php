@@ -17,15 +17,15 @@ final class NativeClient
         typedef struct FDB_tenant FDBTenant;
         typedef struct FDB_transaction FDBTransaction;
 
-        typedef struct {
-            const void* key;
+        typedef struct __attribute__((packed)) {
+            const char* key;
             int key_length;
-            const void* value;
+            const char* value;
             int value_length;
         } FDBKeyValue;
 
-        typedef struct {
-            const void* key;
+        typedef struct __attribute__((packed)) {
+            const char* key;
             int key_length;
         } FDBKey;
 

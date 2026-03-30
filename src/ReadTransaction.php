@@ -100,6 +100,50 @@ class ReadTransaction
         );
     }
 
+    public function getRange(
+        string|KeySelector $begin,
+        string|KeySelector $end,
+        ?RangeOptions $options = null,
+    ): RangeResult {
+        $options ??= new RangeOptions();
+
+        $beginSelector = $begin instanceof KeySelector
+            ? $begin
+            : KeySelector::firstGreaterOrEqual($begin);
+
+        $endSelector = $end instanceof KeySelector
+            ? $end
+            : KeySelector::firstGreaterOrEqual($end);
+
+        return new RangeResult(
+            $this,
+            $beginSelector,
+            $endSelector,
+            $options,
+            $this->isSnapshot,
+            $this->client,
+        );
+    }
+
+    public function getRangeStartsWith(
+        string $prefix,
+        ?RangeOptions $options = null,
+    ): RangeResult {
+        $end = KeyUtil::strinc($prefix);
+
+        return $this->getRange(
+            $prefix,
+            $end ?? "\xFF",
+            $options,
+        );
+    }
+
+    /** @internal */
+    public function getPointer(): CData
+    {
+        return $this->tpointer;
+    }
+
     protected function resolveKey(string|KeyConvertible $key): string
     {
         if ($key instanceof KeyConvertible) {
