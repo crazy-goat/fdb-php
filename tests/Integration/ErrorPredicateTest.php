@@ -17,6 +17,7 @@ final class ErrorPredicateTest extends TestCase
     protected function setUp(): void
     {
         if (!self::$initialized) {
+            FoundationDB::reset();
             FoundationDB::apiVersion(730);
             self::$initialized = true;
         }
