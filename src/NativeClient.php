@@ -71,6 +71,7 @@ final class NativeClient
 
         void fdb_tenant_destroy(FDBTenant* t);
         fdb_error_t fdb_tenant_create_transaction(FDBTenant* t, FDBTransaction** out_transaction);
+        FDBFuture* fdb_tenant_get_id(FDBTenant* tenant);
 
         void fdb_transaction_destroy(FDBTransaction* tr);
         void fdb_transaction_cancel(FDBTransaction* tr);
