@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tuple;
 
-final class Versionstamp
+final readonly class Versionstamp
 {
     public function __construct(
-        public readonly string $trVersion,
-        public readonly int $userVersion,
+        public string $trVersion,
+        public int $userVersion,
     ) {
         if (strlen($this->trVersion) !== 10) {
             throw new \InvalidArgumentException(

@@ -1,4 +1,4 @@
-.PHONY: up down build ssh test test-unit test-integration status fdb-status composer-install
+.PHONY: up down build ssh test test-unit test-integration lint lint-fix stan cs cs-fix rector rector-fix composer-install fdb-status fdb-cli verify help
 
 up: ## Start all containers
 	docker compose up -d --build
@@ -13,16 +13,34 @@ ssh: ## Shell into PHP container
 	docker compose exec php bash
 
 test: ## Run all tests
-	docker compose exec php vendor/bin/phpunit
+	docker compose exec php composer test
 
 test-unit: ## Run unit tests only
-	docker compose exec php vendor/bin/phpunit --testsuite=Unit
+	docker compose exec php composer test:unit
 
 test-integration: ## Run integration tests only
-	docker compose exec php vendor/bin/phpunit --testsuite=Integration
+	docker compose exec php composer test:integration
+
+lint: ## Run all linters (phpcs + rector dry-run + phpstan)
+	docker compose exec php composer lint
+
+lint-fix: ## Fix lint issues (rector + phpcbf)
+	docker compose exec php composer lint:fix
 
 stan: ## Run PHPStan
-	docker compose exec php vendor/bin/phpstan analyse
+	docker compose exec php composer phpstan
+
+cs: ## Run PHP CodeSniffer
+	docker compose exec php composer cs
+
+cs-fix: ## Fix CodeSniffer issues
+	docker compose exec php composer cs-fix
+
+rector: ## Run Rector (dry-run)
+	docker compose exec php composer rector
+
+rector-fix: ## Run Rector (apply changes)
+	docker compose exec php composer rector:fix
 
 composer-install: ## Install composer dependencies
 	docker compose exec php composer install

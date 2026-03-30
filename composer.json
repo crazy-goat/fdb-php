@@ -3,12 +3,21 @@
     "description": "FoundationDB client for PHP",
     "type": "library",
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Hałas Piotr",
+            "email": "halaspiotr@gmail.com"
+        }
+    ],
     "require": {
         "php": ">=8.2"
     },
     "require-dev": {
+        "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^11.0",
-        "phpstan/phpstan": "^2.0"
+        "rector/rector": "^2.3",
+        "slevomat/coding-standard": "^8.15",
+        "squizlabs/php_codesniffer": "^3.9"
     },
     "suggest": {
         "ext-ffi": "Required for the native FoundationDB client bindings",
@@ -24,7 +33,22 @@
             "CrazyGoat\\FoundationDB\\Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "lint": ["phpcs --standard=phpcs.xml.dist", "@rector", "@phpstan"],
+        "lint:fix": ["@rector:fix", "phpcbf --standard=phpcs.xml.dist"],
+        "phpstan": "phpstan analyse",
+        "cs": "phpcs --standard=phpcs.xml.dist",
+        "cs-fix": "phpcbf --standard=phpcs.xml.dist",
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite=Unit",
+        "test:integration": "phpunit --testsuite=Integration",
+        "rector": "rector process --dry-run",
+        "rector:fix": "rector process"
+    },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
     }
 }

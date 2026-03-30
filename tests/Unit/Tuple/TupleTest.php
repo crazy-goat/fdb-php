@@ -483,7 +483,9 @@ final class TupleTest extends TestCase
     #[DataProvider('roundtripProvider')]
     public function roundtripForAllTypes(mixed $input, string $description): void
     {
-        $packed = Tuple::pack([$input]);
+        /** @var list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $elements */
+        $elements = [$input];
+        $packed = Tuple::pack($elements);
         $result = Tuple::unpack($packed);
         self::assertCount(1, $result);
 
@@ -733,7 +735,7 @@ final class TupleTest extends TestCase
     {
         $vs = Versionstamp::incomplete();
         $packed = Tuple::packWithVersionstamp([$vs], 'PRE');
-        $expectedBody = 'PRE' . "\x33" . str_repeat("\xFF", 10) . "\x00\x00";
+        $expectedBody = 'PRE3' . str_repeat("\xFF", 10) . "\x00\x00";
         $expectedOffset = pack('V', 4);
         self::assertSame($expectedBody . $expectedOffset, $packed);
     }

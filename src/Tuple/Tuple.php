@@ -50,7 +50,9 @@ final class Tuple
         }
 
         if ($versionstampCount === 0) {
-            throw new \InvalidArgumentException('packWithVersionstamp requires exactly one Versionstamp element, found 0');
+            throw new \InvalidArgumentException(
+                'packWithVersionstamp requires exactly one Versionstamp element, found 0',
+            );
         }
 
         if ($versionstampCount > 1) {
@@ -75,9 +77,7 @@ final class Tuple
             $result .= $encoded;
         }
 
-        $result .= pack('V', $versionstampOffset);
-
-        return $result;
+        return $result . pack('V', $versionstampOffset);
     }
 
     /**
@@ -87,10 +87,11 @@ final class Tuple
     {
         $pos = $prefixLength;
         $length = strlen($data);
+        /** @var list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $elements */
         $elements = [];
 
         while ($pos < $length) {
-            [$value, $consumed] = self::decodeElement($data, $pos, $length, false);
+            [$value, $consumed] = self::decodeElement($data, $pos, $length);
             $elements[] = $value;
             $pos += $consumed;
         }
@@ -299,7 +300,7 @@ final class Tuple
         /** @var int $intVal */
         $intVal = $data[1];
 
-        if ($intVal & 0x80000000) {
+        if (($intVal & 0x80000000) !== 0) {
             $intVal = ~$intVal & 0xFFFFFFFF;
         } else {
             $intVal |= 0x80000000;
@@ -318,11 +319,7 @@ final class Tuple
         /** @var int $intVal */
         $intVal = $data[1];
 
-        if ($intVal < 0) {
-            $intVal = ~$intVal;
-        } else {
-            $intVal = $intVal | (1 << 63);
-        }
+        $intVal = $intVal < 0 ? ~$intVal : $intVal | (1 << 63);
 
         return chr(self::TYPE_DOUBLE_FLOAT) . pack('J', $intVal);
     }
@@ -348,15 +345,13 @@ final class Tuple
             $result .= self::encodeElement($element, true);
         }
 
-        $result .= "\x00";
-
-        return $result;
+        return $result . "\x00";
     }
 
     /**
-     * @return array{mixed, int}
+     * @return array{null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>, int}
      */
-    private static function decodeElement(string $data, int $pos, int $length, bool $nested): array
+    private static function decodeElement(string $data, int $pos, int $length): array
     {
         if ($pos >= $length) {
             throw new \InvalidArgumentException('Unexpected end of data at position ' . $pos);
@@ -370,8 +365,10 @@ final class Tuple
             $code === self::TYPE_STRING => self::decodeString($data, $pos, $length),
             $code === self::TYPE_NESTED => self::decodeNestedTuple($data, $pos, $length),
             $code === self::TYPE_INT_ZERO => [0, 1],
-            $code > self::TYPE_INT_ZERO && $code <= self::TYPE_POS_INT_END => self::decodePositiveInt($data, $pos, $length, $code),
-            $code >= self::TYPE_NEG_INT_START && $code < self::TYPE_INT_ZERO => self::decodeNegativeInt($data, $pos, $length, $code),
+            $code > self::TYPE_INT_ZERO && $code <= self::TYPE_POS_INT_END
+                => self::decodePositiveInt($data, $pos, $length, $code),
+            $code >= self::TYPE_NEG_INT_START && $code < self::TYPE_INT_ZERO
+                => self::decodeNegativeInt($data, $pos, $length, $code),
             $code === self::TYPE_POS_BIGINT => self::decodePositiveBigInt($data, $pos, $length),
             $code === self::TYPE_NEG_BIGINT => self::decodeNegativeBigInt($data, $pos, $length),
             $code === self::TYPE_SINGLE_FLOAT => self::decodeSingleFloat($data, $pos, $length),
@@ -380,7 +377,9 @@ final class Tuple
             $code === self::TYPE_TRUE => [true, 1],
             $code === self::TYPE_UUID => self::decodeUuid($data, $pos, $length),
             $code === self::TYPE_VERSIONSTAMP => self::decodeVersionstamp($data, $pos, $length),
-            default => throw new \InvalidArgumentException('Unknown type code 0x' . dechex($code) . ' at position ' . $pos),
+            default => throw new \InvalidArgumentException(
+                'Unknown type code 0x' . dechex($code) . ' at position ' . $pos,
+            ),
         };
     }
 
@@ -427,7 +426,7 @@ final class Tuple
                 return [$elements, $innerPos - $pos + 1];
             }
 
-            [$value, $consumed] = self::decodeElement($data, $innerPos, $length, true);
+            [$value, $consumed] = self::decodeElement($data, $innerPos, $length);
             $elements[] = $value;
             $innerPos += $consumed;
         }
@@ -584,7 +583,7 @@ final class Tuple
         /** @var int $intVal */
         $intVal = $unpacked[1];
 
-        if ($intVal & 0x80000000) {
+        if (($intVal & 0x80000000) !== 0) {
             $intVal &= ~0x80000000;
         } else {
             $intVal = ~$intVal & 0xFFFFFFFF;
@@ -616,11 +615,7 @@ final class Tuple
         /** @var int $intVal */
         $intVal = $unpacked[1];
 
-        if ($intVal < 0) {
-            $intVal = $intVal & ~(1 << 63);
-        } else {
-            $intVal = ~$intVal;
-        }
+        $intVal = $intVal < 0 ? $intVal & ~(1 << 63) : ~$intVal;
 
         $bytes = pack('J', $intVal);
         $result = unpack('E', $bytes);
