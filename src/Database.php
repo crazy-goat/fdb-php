@@ -261,6 +261,24 @@ final readonly class Database implements Transactor, ReadTransactor
         );
     }
 
+    public function getMainThreadBusyness(): float
+    {
+        /** @var float $busyness */
+        $busyness = $this->client->fdb->fdb_database_get_main_thread_busyness($this->dpointer);
+
+        return $busyness;
+    }
+
+    public function getClientStatus(): string
+    {
+        $future = new Future\FutureKey(
+            $this->client->fdb->fdb_database_get_client_status($this->dpointer),
+            $this->client,
+        );
+
+        return $future->await();
+    }
+
     public function options(): DatabaseOptions
     {
         return new DatabaseOptions($this);

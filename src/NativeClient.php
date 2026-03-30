@@ -61,6 +61,8 @@ final class NativeClient
             const char* connection_string, FDBDatabase** out_database
         );
         void fdb_database_destroy(FDBDatabase* d);
+        double fdb_database_get_main_thread_busyness(FDBDatabase* d);
+        FDBFuture* fdb_database_get_client_status(FDBDatabase* d);
         fdb_error_t fdb_database_set_option(FDBDatabase* d, int option, const void* value, int value_length);
         fdb_error_t fdb_database_create_transaction(FDBDatabase* d, FDBTransaction** out_transaction);
         fdb_error_t fdb_database_open_tenant(
