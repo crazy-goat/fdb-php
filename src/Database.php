@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Future\FutureVoid;
 use CrazyGoat\FoundationDB\Option\DatabaseOptions;
 use FFI;
 use FFI\CData;
@@ -113,6 +114,150 @@ final readonly class Database implements Transactor, ReadTransactor
         /** @var list<KeyValue> */
         return $this->transact(
             fn (Transaction $tr): array => $tr->getRangeStartsWith($prefix, $options)->toArray(),
+        );
+    }
+
+    public function getKey(KeySelector $selector): string
+    {
+        /** @var string */
+        return $this->transact(fn (Transaction $tr): string => $tr->getKey($selector)->await());
+    }
+
+    public function watch(string $key): FutureVoid
+    {
+        $tr = $this->createTransaction();
+
+        while (true) {
+            try {
+                $watchFuture = $tr->watch($key);
+                $tr->commit()->await();
+
+                return $watchFuture;
+            } catch (FDBException $e) {
+                $tr->onError($e->fdbCode)->await();
+            }
+        }
+    }
+
+    /**
+     * @return array{?string, FutureVoid}
+     */
+    public function getAndWatch(string $key): array
+    {
+        $tr = $this->createTransaction();
+
+        while (true) {
+            try {
+                $value = $tr->get($key)->await();
+                $watchFuture = $tr->watch($key);
+                $tr->commit()->await();
+
+                return [$value, $watchFuture];
+            } catch (FDBException $e) {
+                $tr->onError($e->fdbCode)->await();
+            }
+        }
+    }
+
+    public function setAndWatch(string $key, string $value): FutureVoid
+    {
+        $tr = $this->createTransaction();
+
+        while (true) {
+            try {
+                $tr->set($key, $value);
+                $watchFuture = $tr->watch($key);
+                $tr->commit()->await();
+
+                return $watchFuture;
+            } catch (FDBException $e) {
+                $tr->onError($e->fdbCode)->await();
+            }
+        }
+    }
+
+    public function clearAndWatch(string $key): FutureVoid
+    {
+        $tr = $this->createTransaction();
+
+        while (true) {
+            try {
+                $tr->clear($key);
+                $watchFuture = $tr->watch($key);
+                $tr->commit()->await();
+
+                return $watchFuture;
+            } catch (FDBException $e) {
+                $tr->onError($e->fdbCode)->await();
+            }
+        }
+    }
+
+    public function add(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->add($key, $param);
+        });
+    }
+
+    public function bitAnd(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->bitAnd($key, $param);
+        });
+    }
+
+    public function bitOr(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->bitOr($key, $param);
+        });
+    }
+
+    public function bitXor(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->bitXor($key, $param);
+        });
+    }
+
+    public function max(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->max($key, $param);
+        });
+    }
+
+    public function min(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->min($key, $param);
+        });
+    }
+
+    public function compareAndClear(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->compareAndClear($key, $param);
+        });
+    }
+
+    public function getEstimatedRangeSizeBytes(string $begin, string $end): int
+    {
+        /** @var int */
+        return $this->transact(
+            fn (Transaction $tr): int => $tr->getEstimatedRangeSizeBytes($begin, $end)->await(),
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getRangeSplitPoints(string $begin, string $end, int $chunkSize): array
+    {
+        /** @var list<string> */
+        return $this->transact(
+            fn (Transaction $tr): array => $tr->getRangeSplitPoints($begin, $end, $chunkSize)->await(),
         );
     }
 
