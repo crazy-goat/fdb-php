@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
 use CrazyGoat\FoundationDB\Future\FutureKey;
 use CrazyGoat\FoundationDB\Future\FutureKeyArray;
@@ -122,6 +123,39 @@ class ReadTransaction
             $options,
             $this->isSnapshot,
             $this->client,
+        );
+    }
+
+    /**
+     * @return list<KeyValue>
+     */
+    public function getRangeAll(
+        string|KeySelector $begin,
+        string|KeySelector $end,
+        ?RangeOptions $options = null,
+    ): array {
+        $wantAllOptions = new RangeOptions(
+            limit: $options?->limit,
+            reverse: $options instanceof RangeOptions && $options->reverse,
+            mode: StreamingMode::WantAll,
+        );
+
+        return $this->getRange($begin, $end, $wantAllOptions)->toArray();
+    }
+
+    /**
+     * @return list<KeyValue>
+     */
+    public function getRangeAllStartsWith(
+        string $prefix,
+        ?RangeOptions $options = null,
+    ): array {
+        $end = KeyUtil::strinc($prefix);
+
+        return $this->getRangeAll(
+            $prefix,
+            $end ?? "\xFF",
+            $options,
         );
     }
 
