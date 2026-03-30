@@ -35,7 +35,7 @@ A full-featured [FoundationDB](https://www.foundationdb.org/) client for PHP, bu
 ## Installation
 
 ```bash
-composer require crazy-goat/foundationdb
+composer require crazy-goat/fdb-php
 ```
 
 Make sure `libfdb_c.so` is installed and accessible. On Ubuntu/Debian:
@@ -150,17 +150,23 @@ $dir->remove($db, ['app', 'orders']);
 ### Atomic Operations
 
 ```php
-$db->transact(function (Transaction $tr) {
-    // Increment a little-endian counter
-    $tr->add('counter', pack('P', 1));
+// Integer atomic ops accept int directly — no pack() needed
+$db->add('counter', 1);
+$db->add('counter', 10);
+$db->max('high_score', 999);
+$db->min('response_time', 42);
 
-    // Bitwise operations
-    $tr->bitXor('flag', pack('C', 1));
-    $tr->bitOr('permissions', pack('C', 0b00001100));
+// Bitwise operations
+$db->bitOr('flags', 0b00001100);
+$db->bitAnd('flags', 0b11110011);
+$db->bitXor('flags', 0b00000001);
 
-    // Compare and clear
-    $tr->compareAndClear('temp', pack('P', 0));
-});
+// Read integer values — no unpack() needed
+$count = $db->getInt('counter');     // ?int
+$flags = $db->getInt('flags');       // ?int
+
+// Compare and clear (raw bytes)
+$db->compareAndClear('temp', 'expected_value');
 ```
 
 ### Snapshot Reads

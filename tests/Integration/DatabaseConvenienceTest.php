@@ -131,44 +131,39 @@ final class DatabaseConvenienceTest extends TestCase
     {
         $this->getDatabase()->set('test/conv/add', pack('P', 10));
 
-        $this->getDatabase()->add('test/conv/add', pack('P', 5));
+        $this->getDatabase()->add('test/conv/add', 5);
 
-        $result = unpack('P', (string) $this->getDatabase()->get('test/conv/add'));
-        self::assertIsArray($result);
-        self::assertSame(15, $result[1]);
+        self::assertSame(15, $this->getDatabase()->getInt('test/conv/add'));
     }
 
     #[Test]
     public function bitAndAtomicOperation(): void
     {
-        $this->getDatabase()->set('test/conv/band', "\xFF\x0F");
+        $this->getDatabase()->set('test/conv/band', pack('P', 0xFF0F));
 
-        $this->getDatabase()->bitAnd('test/conv/band', "\x0F\x0F");
+        $this->getDatabase()->bitAnd('test/conv/band', 0x0F0F);
 
-        $result = $this->getDatabase()->get('test/conv/band');
-        self::assertSame("\x0F\x0F", $result);
+        self::assertSame(0x0F0F, $this->getDatabase()->getInt('test/conv/band'));
     }
 
     #[Test]
     public function bitOrAtomicOperation(): void
     {
-        $this->getDatabase()->set('test/conv/bor', "\xF0\x00");
+        $this->getDatabase()->set('test/conv/bor', pack('P', 0xF000));
 
-        $this->getDatabase()->bitOr('test/conv/bor', "\x0F\x0F");
+        $this->getDatabase()->bitOr('test/conv/bor', 0x0F0F);
 
-        $result = $this->getDatabase()->get('test/conv/bor');
-        self::assertSame("\xFF\x0F", $result);
+        self::assertSame(0xFF0F, $this->getDatabase()->getInt('test/conv/bor'));
     }
 
     #[Test]
     public function bitXorAtomicOperation(): void
     {
-        $this->getDatabase()->set('test/conv/bxor', "\xFF\xFF");
+        $this->getDatabase()->set('test/conv/bxor', pack('P', 0xFFFF));
 
-        $this->getDatabase()->bitXor('test/conv/bxor', "\x0F\x0F");
+        $this->getDatabase()->bitXor('test/conv/bxor', 0x0F0F);
 
-        $result = $this->getDatabase()->get('test/conv/bxor');
-        self::assertSame("\xF0\xF0", $result);
+        self::assertSame(0xF0F0, $this->getDatabase()->getInt('test/conv/bxor'));
     }
 
     #[Test]
@@ -176,11 +171,9 @@ final class DatabaseConvenienceTest extends TestCase
     {
         $this->getDatabase()->set('test/conv/max', pack('P', 10));
 
-        $this->getDatabase()->max('test/conv/max', pack('P', 20));
+        $this->getDatabase()->max('test/conv/max', 20);
 
-        $result = unpack('P', (string) $this->getDatabase()->get('test/conv/max'));
-        self::assertIsArray($result);
-        self::assertSame(20, $result[1]);
+        self::assertSame(20, $this->getDatabase()->getInt('test/conv/max'));
     }
 
     #[Test]
@@ -188,11 +181,9 @@ final class DatabaseConvenienceTest extends TestCase
     {
         $this->getDatabase()->set('test/conv/max2', pack('P', 30));
 
-        $this->getDatabase()->max('test/conv/max2', pack('P', 5));
+        $this->getDatabase()->max('test/conv/max2', 5);
 
-        $result = unpack('P', (string) $this->getDatabase()->get('test/conv/max2'));
-        self::assertIsArray($result);
-        self::assertSame(30, $result[1]);
+        self::assertSame(30, $this->getDatabase()->getInt('test/conv/max2'));
     }
 
     #[Test]
@@ -200,11 +191,9 @@ final class DatabaseConvenienceTest extends TestCase
     {
         $this->getDatabase()->set('test/conv/min', pack('P', 20));
 
-        $this->getDatabase()->min('test/conv/min', pack('P', 10));
+        $this->getDatabase()->min('test/conv/min', 10);
 
-        $result = unpack('P', (string) $this->getDatabase()->get('test/conv/min'));
-        self::assertIsArray($result);
-        self::assertSame(10, $result[1]);
+        self::assertSame(10, $this->getDatabase()->getInt('test/conv/min'));
     }
 
     #[Test]
@@ -212,11 +201,15 @@ final class DatabaseConvenienceTest extends TestCase
     {
         $this->getDatabase()->set('test/conv/min2', pack('P', 5));
 
-        $this->getDatabase()->min('test/conv/min2', pack('P', 30));
+        $this->getDatabase()->min('test/conv/min2', 30);
 
-        $result = unpack('P', (string) $this->getDatabase()->get('test/conv/min2'));
-        self::assertIsArray($result);
-        self::assertSame(5, $result[1]);
+        self::assertSame(5, $this->getDatabase()->getInt('test/conv/min2'));
+    }
+
+    #[Test]
+    public function getIntReturnsNullForMissingKey(): void
+    {
+        self::assertNull($this->getDatabase()->getInt('test/conv/nonexistent'));
     }
 
     #[Test]

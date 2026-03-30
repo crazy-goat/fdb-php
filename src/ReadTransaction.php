@@ -172,6 +172,35 @@ class ReadTransaction
         );
     }
 
+    /**
+     * Read a key and decode its value as a little-endian unsigned 64-bit integer.
+     *
+     * This is the counterpart to Transaction::add(), ::max(), ::min() and other
+     * integer-based atomic operations.
+     *
+     * @return ?int null if the key does not exist
+     */
+    public function getInt(string|KeyConvertible $key): ?int
+    {
+        $raw = $this->get($key)->await();
+
+        if ($raw === null) {
+            return null;
+        }
+
+        if (strlen($raw) < 8) {
+            $raw = str_pad($raw, 8, "\x00");
+        }
+
+        $unpacked = unpack('P', $raw);
+
+        if ($unpacked === false) {
+            throw new \RuntimeException('Failed to decode integer value for key');
+        }
+
+        return $unpacked[1];
+    }
+
     /** @internal */
     public function getPointer(): CData
     {
