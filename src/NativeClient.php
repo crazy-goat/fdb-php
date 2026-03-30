@@ -57,6 +57,9 @@ final class NativeClient
         fdb_error_t fdb_future_get_string_array(FDBFuture* f, const char*** out_strings, int* out_count);
 
         fdb_error_t fdb_create_database(const char* cluster_file_path, FDBDatabase** out_database);
+        fdb_error_t fdb_create_database_from_connection_string(
+            const char* connection_string, FDBDatabase** out_database
+        );
         void fdb_database_destroy(FDBDatabase* d);
         fdb_error_t fdb_database_set_option(FDBDatabase* d, int option, const void* value, int value_length);
         fdb_error_t fdb_database_create_transaction(FDBDatabase* d, FDBTransaction** out_transaction);
