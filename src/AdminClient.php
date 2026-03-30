@@ -10,92 +10,118 @@ namespace CrazyGoat\FoundationDB;
  * This class provides methods for cluster administration that require
  * elevated privileges. These operations are separate from normal
  * database operations (CRUD) which are handled by the Database class.
+ *
+ * All admin operations use FoundationDB Special Keys (keys starting with \xff\xff)
+ * which provide a programmatic interface to administrative functions without
+ * requiring external CLI tools.
  */
-final class AdminClient
+final readonly class AdminClient
 {
-    /** @phpstan-ignore property.onlyWritten */
-    private readonly Database $database;
-
-    /** @phpstan-ignore property.onlyWritten */
-    private readonly NativeClient $client;
+    /** Special key prefix for tenant management */
+    private const TENANT_MAP_PREFIX = "\xff\xff/management/tenant/map/";
 
     public function __construct(
-        Database $database,
-        NativeClient $client,
+        private Database $database,
+        /** @phpstan-ignore property.onlyWritten */
+        private NativeClient $client
     ) {
-        $this->database = $database;
-        $this->client = $client;
     }
 
     /**
      * Create a new tenant in the cluster.
      *
+     * Uses special key: \xff\xff/management/tenant/map/<tenant>
+     *
      * @param string $name The name of the tenant to create
-     * @throws \RuntimeException If tenant creation fails
+     * @throws FDBException If tenant creation fails
      */
     public function createTenant(string $name): void
     {
-        // Implementation using fdb_database_create_tenant or fdbcli
-        throw new \RuntimeException('Not implemented yet');
+        $this->database->transact(function (Transaction $tr) use ($name): void {
+            // Enable writes to special key space
+            $tr->options()->setSpecialKeySpaceEnableWrites();
+
+            $key = self::TENANT_MAP_PREFIX . $name;
+            $tr->set($key, '{}'); // Empty JSON object as value
+        });
     }
 
     /**
      * Delete a tenant from the cluster.
      *
+     * Uses special key: \xff\xff/management/tenant/map/<tenant>
+     *
      * @param string $name The name of the tenant to delete
-     * @throws \RuntimeException If tenant deletion fails
+     * @throws FDBException If tenant deletion fails
      */
     public function deleteTenant(string $name): void
     {
-        // Implementation using fdb_database_delete_tenant or fdbcli
-        throw new \RuntimeException('Not implemented yet');
+        $this->database->transact(function (Transaction $tr) use ($name): void {
+            // Enable writes to special key space
+            $tr->options()->setSpecialKeySpaceEnableWrites();
+
+            $key = self::TENANT_MAP_PREFIX . $name;
+            $tr->clear($key);
+        });
     }
 
     /**
      * List all tenants in the cluster.
      *
+     * Uses special key range: \xff\xff/management/tenant/map/
+     *
      * @return list<string> List of tenant names
-     * @throws \RuntimeException If listing fails
+     * @throws FDBException If listing fails
      */
     public function listTenants(): array
     {
-        // Implementation
-        throw new \RuntimeException('Not implemented yet');
+        /** @var list<KeyValue> $results */
+        $results = $this->database->transact(function (Transaction $tr): array {
+            $begin = self::TENANT_MAP_PREFIX;
+            $end = self::TENANT_MAP_PREFIX . '\xff';
+
+            return $tr->getRange($begin, $end)->toArray();
+        });
+
+        $tenants = [];
+        foreach ($results as $kv) {
+            // Extract tenant name from key (remove prefix)
+            $tenantName = substr($kv->key, strlen(self::TENANT_MAP_PREFIX));
+            if ($tenantName !== '') {
+                $tenants[] = $tenantName;
+            }
+        }
+
+        return $tenants;
     }
 
     /**
      * Configure the database.
      *
-     * @param string $configuration Configuration string (e.g., "double ssd")
-     * @throws \RuntimeException If configuration fails
+     * @throws \RuntimeException Not implemented yet
      */
-    public function configure(string $configuration): void
+    public function configure(): never
     {
-        // Implementation using fdbcli or admin API
         throw new \RuntimeException('Not implemented yet');
     }
 
     /**
      * Exclude a server from the database.
      *
-     * @param string $address Server address (e.g., "127.0.0.1:4500")
-     * @throws \RuntimeException If exclusion fails
+     * @throws \RuntimeException Not implemented yet
      */
-    public function excludeServer(string $address): void
+    public function excludeServer(): never
     {
-        // Implementation
         throw new \RuntimeException('Not implemented yet');
     }
 
     /**
      * Include a previously excluded server back into the database.
      *
-     * @param string $address Server address (e.g., "127.0.0.1:4500")
-     * @throws \RuntimeException If inclusion fails
+     * @throws \RuntimeException Not implemented yet
      */
-    public function includeServer(string $address): void
+    public function includeServer(): never
     {
-        // Implementation
         throw new \RuntimeException('Not implemented yet');
     }
 
@@ -103,11 +129,10 @@ final class AdminClient
      * Run a consistency check on the database.
      *
      * @return bool True if database is consistent
-     * @throws \RuntimeException If check fails
+     * @throws \RuntimeException Not implemented yet
      */
     public function consistencyCheck(): bool
     {
-        // Implementation
         throw new \RuntimeException('Not implemented yet');
     }
 
@@ -115,22 +140,20 @@ final class AdminClient
      * Get detailed cluster status.
      *
      * @return array<string, mixed> Structured cluster status information
-     * @throws \RuntimeException If status retrieval fails
+     * @throws \RuntimeException Not implemented yet
      */
     public function getClusterStatus(): array
     {
-        // Implementation returning parsed JSON from fdbcli
         throw new \RuntimeException('Not implemented yet');
     }
 
     /**
      * Force database recovery (use with caution!).
      *
-     * @throws \RuntimeException If recovery fails
+     * @throws \RuntimeException Not implemented yet
      */
-    public function forceRecovery(): void
+    public function forceRecovery(): never
     {
-        // Implementation
         throw new \RuntimeException('Not implemented yet');
     }
 }
