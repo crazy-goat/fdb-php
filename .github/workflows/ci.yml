@@ -139,11 +139,12 @@ jobs:
       - name: Wait for FDB to be ready
         run: |
           for i in $(seq 1 60); do
-            if fdbcli -C fdb.cluster --exec "status minimal" 2>/dev/null | grep -q "healthy"; then
+            STATUS=$(fdbcli -C fdb.cluster --exec "status minimal" 2>&1 || true)
+            echo "  [$i] $STATUS"
+            if echo "$STATUS" | grep -q "available"; then
               echo "FDB is ready after ${i}s"
               exit 0
             fi
-            echo "Waiting for FDB... ($i/60)"
             sleep 1
           done
           echo "FDB failed to become ready"
