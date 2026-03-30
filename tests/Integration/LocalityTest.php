@@ -37,13 +37,12 @@ final class LocalityTest extends TestCase
     }
 
     #[Test]
-    public function getBoundaryKeysReturnsStrings(): void
+    public function getBoundaryKeysContainsOnlyStrings(): void
     {
         $boundaries = Locality::getBoundaryKeys(self::$db, '', "\xFF");
 
-        foreach ($boundaries as $boundary) {
-            self::assertNotEmpty($boundary);
-        }
+        self::assertNotEmpty($boundaries);
+        self::assertContainsOnly('string', $boundaries);
     }
 
     #[Test]
@@ -70,6 +69,9 @@ final class LocalityTest extends TestCase
     public function getBoundaryKeysAreSorted(): void
     {
         $boundaries = Locality::getBoundaryKeys(self::$db, '', "\xFF");
+
+        self::assertGreaterThanOrEqual(1, count($boundaries));
+
         $count = count($boundaries);
 
         for ($i = 1; $i < $count; $i++) {
