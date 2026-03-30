@@ -63,11 +63,59 @@ final class RebootWorkerTest extends TestCase
             }
         }
 
-        // If we can't find a storage node from status, use known IP from docker network
-        // Note: FDB requires IP address, not hostname
+        // If we can't find a storage node from status, try to get it from fdbcli
         if ($storageAddress === null) {
-            // Get IP from docker network (fdb-server-1 is usually 172.19.0.5 or similar)
-            $storageAddress = '172.19.0.5:4510';
+            // Try to get storage node address from fdbcli status
+            $clusterFile = getenv('FDB_CLUSTER_FILE') ?: '/app/fdb.cluster';
+            /** @var string|false $statusOutput */
+            $statusOutput = shell_exec("fdbcli -C {$clusterFile} --exec 'status json' 2>&1");
+            if (is_string($statusOutput)) {
+                /** @var mixed $statusData */
+                $statusData = json_decode($statusOutput, true);
+                if (!is_array($statusData)) {
+                    $statusData = [];
+                }
+                $clusterData = $statusData['cluster'] ?? null;
+                if (is_array($clusterData)) {
+                    $processes = $clusterData['processes'] ?? null;
+                    if (is_array($processes)) {
+                        foreach ($processes as $proc) {
+                            if (!is_array($proc)) {
+                                continue;
+                            }
+                            /** @var mixed $roles */
+                            $roles = $proc['roles'] ?? [];
+                            if (!is_array($roles)) {
+                                continue;
+                            }
+                            $hasStorage = false;
+                            $hasCoordinator = false;
+                            foreach ($roles as $role) {
+                                if (is_array($role) && isset($role['role'])) {
+                                    if ($role['role'] === 'storage') {
+                                        $hasStorage = true;
+                                    }
+                                    if ($role['role'] === 'coordinator') {
+                                        $hasCoordinator = true;
+                                    }
+                                }
+                            }
+                            if ($hasStorage && !$hasCoordinator) {
+                                $addr = $proc['address'] ?? null;
+                                if (is_string($addr)) {
+                                    $storageAddress = $addr;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback to environment variable or default
+        if ($storageAddress === null) {
+            $storageAddress = getenv('FDB_REBOOT_TEST_IP') ?: '172.19.0.5:4510';
         }
 
         // Store test data before reboot

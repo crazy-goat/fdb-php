@@ -101,7 +101,7 @@ jobs:
         run: ./vendor/bin/phpunit --testsuite=Unit --testdox
 
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (5-node FDB cluster)
     needs: [check-actor, lint]
     if: needs.check-actor.outputs.allowed == 'true'
     runs-on: ubuntu-latest
@@ -109,14 +109,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start FoundationDB container
+      - name: Setup Docker Compose
         run: |
-          docker run -d --name fdb \
-            -e FDB_NETWORKING_MODE=host \
-            -p 4500:4500 \
-            --entrypoint /usr/bin/tini \
-            foundationdb/foundationdb:7.3.75 \
-            -g -- /var/fdb/scripts/fdb_single.bash
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Start 5-node FDB cluster
+        run: |
+          docker-compose up -d fdb-coord-1 fdb-coord-2 fdb-coord-3 fdb-server-1 fdb-server-2 fdb-config
+          
+          # Wait for cluster to be ready
+          echo "Waiting for FDB cluster..."
+          for i in $(seq 1 60); do
+            if docker-compose exec -T fdb-config fdbcli --exec "status minimal" 2>/dev/null | grep -q "available"; then
+              echo "FDB cluster is ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+          
+          # Show cluster status
+          docker-compose exec -T fdb-config fdbcli --exec "status"
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -135,29 +148,24 @@ jobs:
         run: composer install --no-interaction --prefer-dist
 
       - name: Create cluster file
-        run: echo "docker:docker@127.0.0.1:4500" > fdb.cluster
-
-      - name: Wait for FDB to be ready
         run: |
-          for i in $(seq 1 60); do
-            STATUS=$(fdbcli -C fdb.cluster --exec "status minimal" 2>&1 || true)
-            echo "  [$i] $STATUS"
-            if echo "$STATUS" | grep -q "available"; then
-              echo "FDB is ready after ${i}s"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "FDB failed to become ready"
-          docker logs fdb || true
-          fdbcli -C fdb.cluster --exec "status" || true
-          exit 1
+          echo "docker:docker@127.0.0.1:4500,127.0.0.1:4501,127.0.0.1:4502" > fdb.cluster
+          
+          # Get IP of fdb-server-1 for reboot tests
+          SERVER1_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' fdb-php-fdb-server-1-1)
+          echo "FDB_REBOOT_TEST_IP=${SERVER1_IP}:4510" >> $GITHUB_ENV
+          echo "fdb-server-1 IP: ${SERVER1_IP}:4510"
 
       - name: Configure tenant mode
         run: |
-          fdbcli -C fdb.cluster --exec "configure tenant_mode=optional_experimental"
+          docker-compose exec -T fdb-config fdbcli --exec "configure tenant_mode=optional_experimental"
 
       - name: Run E2E tests
         env:
           FDB_CLUSTER_FILE: fdb.cluster
+          FDB_REBOOT_TEST_IP: ${{ env.FDB_REBOOT_TEST_IP }}
         run: ./vendor/bin/phpunit --testsuite=Integration --testdox
+
+      - name: Cleanup
+        if: always()
+        run: docker-compose down -v
