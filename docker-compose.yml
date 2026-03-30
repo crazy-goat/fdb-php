@@ -1,26 +1,88 @@
 services:
-  fdb:
+  # FDB Coordinator 1
+  fdb-coord-1:
     image: foundationdb/foundationdb:7.3.75
-    entrypoint: ["/usr/bin/tini", "-g", "--", "/var/fdb/scripts/fdb_single.bash"]
+    hostname: fdb-coord-1
     environment:
-      FDB_NETWORKING_MODE: container
+      FDB_PORT: 4500
+      FDB_CLUSTER_FILE_CONTENTS: |
+        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
     ports:
       - "4500:4500"
     volumes:
-      - fdb-data:/var/fdb/data
-    healthcheck:
-      test: ["CMD", "fdbcli", "--exec", "status minimal"]
-      interval: 5s
-      timeout: 10s
-      retries: 30
-      start_period: 30s
+      - fdb-coord-1-data:/var/fdb/data
+
+  # FDB Coordinator 2
+  fdb-coord-2:
+    image: foundationdb/foundationdb:7.3.75
+    hostname: fdb-coord-2
+    environment:
+      FDB_PORT: 4501
+      FDB_CLUSTER_FILE_CONTENTS: |
+        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+    ports:
+      - "4501:4501"
+    volumes:
+      - fdb-coord-2-data:/var/fdb/data
+
+  # FDB Coordinator 3
+  fdb-coord-3:
+    image: foundationdb/foundationdb:7.3.75
+    hostname: fdb-coord-3
+    environment:
+      FDB_PORT: 4502
+      FDB_CLUSTER_FILE_CONTENTS: |
+        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+    ports:
+      - "4502:4502"
+    volumes:
+      - fdb-coord-3-data:/var/fdb/data
+
+  # FDB Configurator
+  fdb-config:
+    image: foundationdb/foundationdb:7.3.75
+    depends_on:
+      - fdb-coord-1
+      - fdb-coord-2
+      - fdb-coord-3
+    environment:
+      FDB_PORT: 4500
+      FDB_CLUSTER_FILE_CONTENTS: |
+        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        
+        # Create cluster file
+        mkdir -p /var/fdb
+        echo "docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502" > /var/fdb/fdb.cluster
+        
+        # Wait for all coordinators to be ready
+        echo "Waiting for FDB coordinators..."
+        for i in $(seq 1 60); do
+          if fdbcli --exec "status" 2>/dev/null | grep -q "processes"; then
+            echo "Coordinators are ready!"
+            break
+          fi
+          sleep 2
+        done
+        
+        # Configure the cluster with single memory (uses less disk)
+        echo "Configuring 3-node FDB cluster..."
+        fdbcli --exec "configure new single memory" || echo "Cluster may already be configured"
+        
+        # Show status
+        fdbcli --exec "status"
+        
+        # Keep container running
+        exec tail -f /dev/null
 
   php:
     build:
       context: ./docker/php
     depends_on:
-      fdb:
-        condition: service_healthy
+      - fdb-config
     volumes:
       - .:/app
     environment:
@@ -28,7 +90,14 @@ services:
     working_dir: /app
     stdin_open: true
     tty: true
-    entrypoint: ["/bin/bash", "-c", "echo \"docker:docker@$(getent hosts fdb | awk '{print $1}'):4500\" > /app/fdb.cluster && exec tail -f /dev/null"]
+    entrypoint: 
+      - /bin/bash
+      - -c
+      - |
+        echo "docker:docker@127.0.0.1:4500,127.0.0.1:4501,127.0.0.1:4502" > /app/fdb.cluster
+        exec tail -f /dev/null
 
 volumes:
-  fdb-data:
+  fdb-coord-1-data:
+  fdb-coord-2-data:
+  fdb-coord-3-data:
