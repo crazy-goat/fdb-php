@@ -4,90 +4,86 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Enum\ConflictRangeType;
+use CrazyGoat\FoundationDB\Enum\MutationType;
+use CrazyGoat\FoundationDB\Future\FutureInt64;
+use CrazyGoat\FoundationDB\Future\FutureKey;
+use CrazyGoat\FoundationDB\Future\FutureVoid;
 use FFI;
 use FFI\CData;
 
-final class Transaction
+final class Transaction extends ReadTransaction implements Transactor
 {
+    private ?Snapshot $snapshotInstance = null;
+
     public function __construct(
-        private readonly CData $tpointer,
-        private readonly Database $db,
-        private readonly NativeClient $client,
+        CData $tpointer,
+        Database $db,
+        NativeClient $client,
     ) {
+        parent::__construct($tpointer, $db, $client, false);
     }
 
-    public function set(string $key, string $value): void
+    public function set(string|KeyConvertible $key, string $value): void
     {
+        $resolvedKey = $this->resolveKey($key);
+
         $this->client->fdb->fdb_transaction_set(
             $this->tpointer,
-            $key,
-            strlen($key),
+            $resolvedKey,
+            strlen($resolvedKey),
             $value,
             strlen($value),
         );
     }
 
-    public function get(string $key): ?string
+    public function clear(string|KeyConvertible $key): void
     {
-        $future = $this->client->fdb->fdb_transaction_get(
-            $this->tpointer,
-            $key,
-            strlen($key),
-            0,
-        );
+        $resolvedKey = $this->resolveKey($key);
 
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_block_until_ready($future),
-        );
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_get_error($future),
-        );
-
-        $present = $this->client->fdb->new('fdb_bool_t');
-        $valuePtr = $this->client->fdb->new('char*');
-        $valueLength = $this->client->fdb->new('int');
-
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_get_value(
-                $future,
-                FFI::addr($present),
-                FFI::addr($valuePtr),
-                FFI::addr($valueLength),
-            ),
-        );
-
-        if ($present->cdata === 0) {
-            $this->client->fdb->fdb_future_destroy($future);
-            return null;
-        }
-
-        $result = FFI::string($valuePtr, $valueLength->cdata);
-        $this->client->fdb->fdb_future_destroy($future);
-
-        return $result;
-    }
-
-    public function clear(string $key): void
-    {
         $this->client->fdb->fdb_transaction_clear(
             $this->tpointer,
-            $key,
-            strlen($key),
+            $resolvedKey,
+            strlen($resolvedKey),
         );
     }
 
-    public function commit(): void
+    public function clearRange(string $begin, string $end): void
     {
-        $future = $this->client->fdb->fdb_transaction_commit($this->tpointer);
-
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_block_until_ready($future),
+        $this->client->fdb->fdb_transaction_clear_range(
+            $this->tpointer,
+            $begin,
+            strlen($begin),
+            $end,
+            strlen($end),
         );
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_get_error($future),
-        );
+    }
 
-        $this->client->fdb->fdb_future_destroy($future);
+    public function clearRangeStartsWith(string $prefix): void
+    {
+        $end = $this->strinc($prefix);
+
+        if ($end === null) {
+            return;
+        }
+
+        $this->clearRange($prefix, $end);
+    }
+
+    public function commit(): FutureVoid
+    {
+        return new FutureVoid(
+            $this->client->fdb->fdb_transaction_commit($this->tpointer),
+            $this->client,
+        );
+    }
+
+    public function onError(int $code): FutureVoid
+    {
+        return new FutureVoid(
+            $this->client->fdb->fdb_transaction_on_error($this->tpointer, $code),
+            $this->client,
+        );
     }
 
     public function reset(): void
@@ -100,28 +96,199 @@ final class Transaction
         $this->client->fdb->fdb_transaction_cancel($this->tpointer);
     }
 
-    public function onError(int $code): void
+    public function setReadVersion(int $version): void
     {
-        $future = $this->client->fdb->fdb_transaction_on_error($this->tpointer, $code);
-
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_block_until_ready($future),
-        );
-        $this->client->checkError(
-            $this->client->fdb->fdb_future_get_error($future),
-        );
-
-        $this->client->fdb->fdb_future_destroy($future);
+        $this->client->fdb->fdb_transaction_set_read_version($this->tpointer, $version);
     }
 
-    /** @internal */
-    public function getPointer(): CData
+    public function getCommittedVersion(): int
     {
-        return $this->tpointer;
+        $out = $this->client->fdb->new('int64_t');
+        $this->client->checkError(
+            $this->client->fdb->fdb_transaction_get_committed_version($this->tpointer, FFI::addr($out)),
+        );
+
+        return $out->cdata;
+    }
+
+    public function getApproximateSize(): FutureInt64
+    {
+        return new FutureInt64(
+            $this->client->fdb->fdb_transaction_get_approximate_size($this->tpointer),
+            $this->client,
+        );
+    }
+
+    public function getVersionstamp(): FutureKey
+    {
+        return new FutureKey(
+            $this->client->fdb->fdb_transaction_get_versionstamp($this->tpointer),
+            $this->client,
+        );
+    }
+
+    public function watch(string $key): FutureVoid
+    {
+        return new FutureVoid(
+            $this->client->fdb->fdb_transaction_watch(
+                $this->tpointer,
+                $key,
+                strlen($key),
+            ),
+            $this->client,
+        );
+    }
+
+    public function atomicOp(MutationType $type, string $key, string $param): void
+    {
+        $this->client->fdb->fdb_transaction_atomic_op(
+            $this->tpointer,
+            $key,
+            strlen($key),
+            $param,
+            strlen($param),
+            $type->value,
+        );
+    }
+
+    public function add(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::Add, $key, $param);
+    }
+
+    public function bitAnd(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::BitAnd, $key, $param);
+    }
+
+    public function bitOr(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::BitOr, $key, $param);
+    }
+
+    public function bitXor(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::BitXor, $key, $param);
+    }
+
+    public function max(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::Max, $key, $param);
+    }
+
+    public function min(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::Min, $key, $param);
+    }
+
+    public function byteMax(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::ByteMax, $key, $param);
+    }
+
+    public function byteMin(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::ByteMin, $key, $param);
+    }
+
+    public function compareAndClear(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::CompareAndClear, $key, $param);
+    }
+
+    public function setVersionstampedKey(string $key, string $value): void
+    {
+        $this->atomicOp(MutationType::SetVersionstampedKey, $key, $value);
+    }
+
+    public function setVersionstampedValue(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::SetVersionstampedValue, $key, $param);
+    }
+
+    public function addReadConflictRange(string $begin, string $end): void
+    {
+        $this->client->checkError(
+            $this->client->fdb->fdb_transaction_add_conflict_range(
+                $this->tpointer,
+                $begin,
+                strlen($begin),
+                $end,
+                strlen($end),
+                ConflictRangeType::Read->value,
+            ),
+        );
+    }
+
+    public function addWriteConflictRange(string $begin, string $end): void
+    {
+        $this->client->checkError(
+            $this->client->fdb->fdb_transaction_add_conflict_range(
+                $this->tpointer,
+                $begin,
+                strlen($begin),
+                $end,
+                strlen($end),
+                ConflictRangeType::Write->value,
+            ),
+        );
+    }
+
+    public function addReadConflictKey(string $key): void
+    {
+        $this->addReadConflictRange($key, $key . "\x00");
+    }
+
+    public function addWriteConflictKey(string $key): void
+    {
+        $this->addWriteConflictRange($key, $key . "\x00");
+    }
+
+    public function setOption(int $option, ?string $value = null): void
+    {
+        $this->client->checkError(
+            $this->client->fdb->fdb_transaction_set_option(
+                $this->tpointer,
+                $option,
+                $value,
+                $value !== null ? strlen($value) : 0,
+            ),
+        );
+    }
+
+    public function snapshot(): Snapshot
+    {
+        return $this->snapshotInstance ??= new Snapshot($this->tpointer, $this->db, $this->client, $this);
+    }
+
+    public function transact(callable $fn): mixed
+    {
+        return $fn($this);
     }
 
     public function __destruct()
     {
         $this->client->fdb->fdb_transaction_destroy($this->tpointer);
+    }
+
+    private function strinc(string $key): ?string
+    {
+        $unpacked = unpack('C*', $key);
+
+        if ($unpacked === false) {
+            return null;
+        }
+
+        $bytes = array_values($unpacked);
+        $length = count($bytes);
+
+        for ($i = $length - 1; $i >= 0; $i--) {
+            if ($bytes[$i] < 0xFF) {
+                $bytes[$i]++;
+                return pack('C*', ...array_slice($bytes, 0, $i + 1));
+            }
+        }
+
+        return null;
     }
 }

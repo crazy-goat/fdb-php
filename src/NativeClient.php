@@ -243,6 +243,8 @@ final class NativeClient
             return;
         }
 
+        FoundationDB::reset();
+
         $this->fdb->fdb_stop_network();
 
         if ($this->networkThread instanceof \FFI\CData) {

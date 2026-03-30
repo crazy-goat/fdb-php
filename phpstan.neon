@@ -18,5 +18,13 @@ parameters:
           path: src/Transaction.php
         - identifier: property.notFound
           path: src/Transaction.php
+        - identifier: method.notFound
+          path: src/ReadTransaction.php
+        - identifier: method.notFound
+          path: src/Tenant.php
         - identifier: property.onlyWritten
-          path: src/Transaction.php
+          path: src/Snapshot.php
+        - identifier: method.notFound
+          path: src/Future/*.php
+        - identifier: property.notFound
+          path: src/Future/*.php

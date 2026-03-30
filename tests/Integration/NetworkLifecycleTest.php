@@ -79,18 +79,18 @@ final class NetworkLifecycleTest extends TestCase
 
         $tr = $db->createTransaction();
         $tr->set('test_php_ffi_key', 'hello_world');
-        $tr->commit();
+        $tr->commit()->await();
 
         $tr2 = $db->createTransaction();
-        $value = $tr2->get('test_php_ffi_key');
+        $value = $tr2->get('test_php_ffi_key')->await();
         self::assertSame('hello_world', $value);
 
         $tr3 = $db->createTransaction();
         $tr3->clear('test_php_ffi_key');
-        $tr3->commit();
+        $tr3->commit()->await();
 
         $tr4 = $db->createTransaction();
-        $value = $tr4->get('test_php_ffi_key');
+        $value = $tr4->get('test_php_ffi_key')->await();
         self::assertNull($value);
     }
 
@@ -100,7 +100,7 @@ final class NetworkLifecycleTest extends TestCase
         $db = FoundationDB::open();
 
         $tr = $db->createTransaction();
-        $value = $tr->get('test_php_ffi_nonexistent_key_' . bin2hex(random_bytes(8)));
+        $value = $tr->get('test_php_ffi_nonexistent_key_' . bin2hex(random_bytes(8)))->await();
         self::assertNull($value);
     }
 
@@ -123,15 +123,15 @@ final class NetworkLifecycleTest extends TestCase
         $tr->reset();
 
         $tr->set('test_php_ffi_reset_key', 'value2');
-        $tr->commit();
+        $tr->commit()->await();
 
         $tr2 = $db->createTransaction();
-        $value = $tr2->get('test_php_ffi_reset_key');
+        $value = $tr2->get('test_php_ffi_reset_key')->await();
         self::assertSame('value2', $value);
 
         $tr3 = $db->createTransaction();
         $tr3->clear('test_php_ffi_reset_key');
-        $tr3->commit();
+        $tr3->commit()->await();
     }
 
     #[Test]
