@@ -104,7 +104,7 @@ final class TenantTest extends TestCase
         $output = (string) shell_exec(
             "fdbcli -C {$clusterFile} --exec 'configure tenant_mode=optional_experimental' 2>&1",
         );
-        if (!str_contains($output, 'committed') && !str_contains($output, 'already')) {
+        if (!str_contains($output, 'committed') && !str_contains($output, 'already') && !str_contains($output, 'Configuration changed')) {
             self::markTestSkipped('Could not configure tenant mode: ' . $output);
         }
     }

@@ -63,9 +63,11 @@ final class RebootWorkerTest extends TestCase
             }
         }
 
-        // If we can't find a storage node from status, use known address from docker-compose
+        // If we can't find a storage node from status, use known IP from docker network
+        // Note: FDB requires IP address, not hostname
         if ($storageAddress === null) {
-            $storageAddress = 'fdb-server-1:4510';
+            // Get IP from docker network (fdb-server-1 is usually 172.19.0.5 or similar)
+            $storageAddress = '172.19.0.5:4510';
         }
 
         // Store test data before reboot
