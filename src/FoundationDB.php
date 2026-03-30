@@ -116,6 +116,16 @@ final class FoundationDB
     }
 
     /** @internal */
+    public static function removeDatabase(Database $database): void
+    {
+        foreach (self::$databases as $key => $cached) {
+            if ($cached === $database) {
+                unset(self::$databases[$key]);
+            }
+        }
+    }
+
+    /** @internal */
     public static function reset(): void
     {
         self::$apiVersion = null;

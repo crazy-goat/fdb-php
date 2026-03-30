@@ -31,6 +31,7 @@ return RectorConfig::configure()
         AddMethodCallBasedStrictParamTypeRector::class,
         StaticCallOnNonStaticToInstanceCallRector::class,
         ReadOnlyClassRector::class => [
+            __DIR__ . '/src/Database.php',
             __DIR__ . '/src/Transaction.php',
             __DIR__ . '/src/NativeClient.php',
         ],
