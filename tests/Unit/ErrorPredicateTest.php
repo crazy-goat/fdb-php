@@ -46,6 +46,4 @@ final class ErrorPredicateTest extends TestCase
         self::assertSame(ErrorPredicate::MaybeCommitted, ErrorPredicate::from(50001));
         self::assertSame(ErrorPredicate::RetryableNotCommitted, ErrorPredicate::from(50002));
     }
-
-
 }
