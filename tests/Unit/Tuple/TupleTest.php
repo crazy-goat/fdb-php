@@ -1067,4 +1067,67 @@ final class TupleTest extends TestCase
         $packed = Tuple::packWithVersionstamp([$vs]);
         self::assertNotEmpty($packed);
     }
+
+    #[Test]
+    public function hasIncompleteVersionstampReturnsTrueForIncomplete(): void
+    {
+        $vs = Versionstamp::incomplete();
+        self::assertTrue(Tuple::hasIncompleteVersionstamp([$vs]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampReturnsFalseForComplete(): void
+    {
+        $vs = new Versionstamp(str_repeat("\x01", 10), 0);
+        self::assertFalse(Tuple::hasIncompleteVersionstamp([$vs]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampReturnsFalseForNoVersionstamp(): void
+    {
+        self::assertFalse(Tuple::hasIncompleteVersionstamp(['hello', 42, null]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampReturnsFalseForEmptyTuple(): void
+    {
+        self::assertFalse(Tuple::hasIncompleteVersionstamp([]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampHandlesNestedTupleWithIncomplete(): void
+    {
+        $vs = Versionstamp::incomplete(5);
+        self::assertTrue(Tuple::hasIncompleteVersionstamp([['nested', $vs]]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampHandlesNestedTupleWithComplete(): void
+    {
+        $vs = new Versionstamp(str_repeat("\x02", 10), 0);
+        self::assertFalse(Tuple::hasIncompleteVersionstamp([['nested', $vs]]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampHandlesDeeplyNestedIncomplete(): void
+    {
+        $vs = Versionstamp::incomplete();
+        self::assertTrue(Tuple::hasIncompleteVersionstamp([['level1', ['level2', $vs]]]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampMixedCompleteAndIncomplete(): void
+    {
+        $complete = new Versionstamp(str_repeat("\x01", 10), 0);
+        $incomplete = Versionstamp::incomplete();
+        self::assertTrue(Tuple::hasIncompleteVersionstamp([$complete, $incomplete]));
+    }
+
+    #[Test]
+    public function hasIncompleteVersionstampAllComplete(): void
+    {
+        $vs1 = new Versionstamp(str_repeat("\x01", 10), 0);
+        $vs2 = new Versionstamp(str_repeat("\x02", 10), 1);
+        self::assertFalse(Tuple::hasIncompleteVersionstamp([$vs1, $vs2]));
+    }
 }

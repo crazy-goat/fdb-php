@@ -101,6 +101,20 @@ final class Tuple
 
     /**
      * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $elements
+     */
+    public static function hasIncompleteVersionstamp(array $elements): bool
+    {
+        foreach ($elements as $element) {
+            if (self::elementHasIncompleteVersionstamp($element)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>> $elements
      * @return array{string, string}
      */
     public static function range(array $elements): array
@@ -748,6 +762,23 @@ final class Tuple
         }
 
         return $bytes;
+    }
+
+    private static function elementHasIncompleteVersionstamp(mixed $element): bool
+    {
+        if ($element instanceof Versionstamp) {
+            return !$element->isComplete();
+        }
+
+        if (is_array($element)) {
+            foreach ($element as $child) {
+                if (self::elementHasIncompleteVersionstamp($child)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static function countVersionstamps(mixed $element, int &$count): void
