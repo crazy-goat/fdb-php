@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
-use CrazyGoat\FoundationDB\Database;
 use CrazyGoat\FoundationDB\Directory\DirectoryException;
 use CrazyGoat\FoundationDB\Directory\DirectoryLayer;
 use CrazyGoat\FoundationDB\Directory\DirectoryPartition;
 use CrazyGoat\FoundationDB\Directory\DirectorySubspace;
-use CrazyGoat\FoundationDB\FoundationDB;
-use CrazyGoat\FoundationDB\Transaction;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 

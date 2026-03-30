@@ -76,7 +76,7 @@ final class ConnectionStringTest extends TestCase
         } finally {
             if ($currentVersion !== null) {
                 FoundationDB::apiVersion($currentVersion);
-                self::$db = FoundationDB::openWithConnectionString(self::$connectionString);
+                FoundationDB::openWithConnectionString(self::$connectionString);
             }
         }
     }

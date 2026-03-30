@@ -12,14 +12,10 @@ use PHPUnit\Framework\TestCase;
 
 final class NetworkLifecycleTest extends TestCase
 {
-    private static bool $initialized = false;
-
     protected function setUp(): void
     {
-        if (!self::$initialized) {
-            FoundationDB::reset();
+        if (FoundationDB::getApiVersion() === null) {
             FoundationDB::apiVersion(730);
-            self::$initialized = true;
         }
     }
 
