@@ -7,6 +7,7 @@ namespace CrazyGoat\FoundationDB\Tests\Unit;
 use CrazyGoat\FoundationDB\KeyConvertible;
 use CrazyGoat\FoundationDB\Subspace;
 use CrazyGoat\FoundationDB\Tuple\Tuple;
+use CrazyGoat\FoundationDB\Tuple\Versionstamp;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
@@ -370,5 +371,88 @@ final class SubspaceTest extends TestCase
         $parent->pack(['data']);
 
         self::assertSame($originalPrefix, $parent->rawPrefix);
+    }
+
+    #[Test]
+    public function packWithVersionstampPrependsPrefix(): void
+    {
+        $sub = new Subspace(['users']);
+        $packed = $sub->packWithVersionstamp([Versionstamp::incomplete()]);
+
+        self::assertTrue(str_starts_with($packed, $sub->rawPrefix));
+    }
+
+    #[Test]
+    public function packWithVersionstampAdjustsOffset(): void
+    {
+        $sub = new Subspace(['users']);
+        $prefixLength = strlen($sub->rawPrefix);
+
+        $withoutPrefix = Tuple::packWithVersionstamp([Versionstamp::incomplete()]);
+        $originalOffsetData = unpack('V', substr($withoutPrefix, -4));
+        self::assertIsArray($originalOffsetData);
+        /** @var int $originalOffset */
+        $originalOffset = $originalOffsetData[1];
+
+        $withPrefix = $sub->packWithVersionstamp([Versionstamp::incomplete()]);
+        $adjustedOffsetData = unpack('V', substr($withPrefix, -4));
+        self::assertIsArray($adjustedOffsetData);
+        /** @var int $adjustedOffset */
+        $adjustedOffset = $adjustedOffsetData[1];
+
+        self::assertSame($originalOffset + $prefixLength, $adjustedOffset);
+    }
+
+    #[Test]
+    public function packWithVersionstampEmptySubspaceMatchesTuplePack(): void
+    {
+        $sub = new Subspace();
+        $fromSubspace = $sub->packWithVersionstamp([Versionstamp::incomplete()]);
+        $fromTuple = Tuple::packWithVersionstamp([Versionstamp::incomplete()]);
+
+        self::assertSame($fromTuple, $fromSubspace);
+    }
+
+    #[Test]
+    public function packWithVersionstampWithMultipleElements(): void
+    {
+        $sub = new Subspace(['app']);
+        $packed = $sub->packWithVersionstamp(['key1', Versionstamp::incomplete()]);
+
+        self::assertTrue(str_starts_with($packed, $sub->rawPrefix));
+
+        $offsetData = unpack('V', substr($packed, -4));
+        self::assertIsArray($offsetData);
+        /** @var int $offset */
+        $offset = $offsetData[1];
+
+        self::assertSame(chr(0x33), $packed[$offset - 1]);
+    }
+
+    #[Test]
+    public function packWithVersionstampWithRawPrefix(): void
+    {
+        $sub = new Subspace([], "\xFE");
+        $packed = $sub->packWithVersionstamp([Versionstamp::incomplete()]);
+
+        self::assertTrue(str_starts_with($packed, "\xFE"));
+
+        $offsetData = unpack('V', substr($packed, -4));
+        self::assertIsArray($offsetData);
+        /** @var int $offset */
+        $offset = $offsetData[1];
+
+        self::assertSame(chr(0x33), $packed[$offset - 1]);
+    }
+
+    #[Test]
+    public function packWithVersionstampNoVersionstampThrows(): void
+    {
+        $sub = new Subspace(['users']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('packWithVersionstamp requires exactly one Versionstamp');
+
+        $sub->packWithVersionstamp(['no_versionstamp']);
     }
 }
