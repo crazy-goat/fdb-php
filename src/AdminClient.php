@@ -15,22 +15,16 @@ namespace CrazyGoat\FoundationDB;
  * which provide a programmatic interface to administrative functions without
  * requiring external CLI tools.
  */
-final class AdminClient
+final readonly class AdminClient
 {
     /** Special key prefix for tenant management */
     private const TENANT_MAP_PREFIX = "\xff\xff/management/tenant/map/";
 
-    private readonly Database $database;
-
-    /** @phpstan-ignore property.onlyWritten */
-    private readonly NativeClient $client;
-
     public function __construct(
-        Database $database,
-        NativeClient $client,
+        private Database $database,
+        /** @phpstan-ignore property.onlyWritten */
+        private NativeClient $client
     ) {
-        $this->database = $database;
-        $this->client = $client;
     }
 
     /**
@@ -104,10 +98,9 @@ final class AdminClient
     /**
      * Configure the database.
      *
-     * @param string $configuration Configuration string (e.g., "double ssd")
      * @throws \RuntimeException Not implemented yet
      */
-    public function configure(string $configuration): void
+    public function configure(): never
     {
         throw new \RuntimeException('Not implemented yet');
     }
@@ -115,10 +108,9 @@ final class AdminClient
     /**
      * Exclude a server from the database.
      *
-     * @param string $address Server address (e.g., "127.0.0.1:4500")
      * @throws \RuntimeException Not implemented yet
      */
-    public function excludeServer(string $address): void
+    public function excludeServer(): never
     {
         throw new \RuntimeException('Not implemented yet');
     }
@@ -126,10 +118,9 @@ final class AdminClient
     /**
      * Include a previously excluded server back into the database.
      *
-     * @param string $address Server address (e.g., "127.0.0.1:4500")
      * @throws \RuntimeException Not implemented yet
      */
-    public function includeServer(string $address): void
+    public function includeServer(): never
     {
         throw new \RuntimeException('Not implemented yet');
     }
@@ -161,7 +152,7 @@ final class AdminClient
      *
      * @throws \RuntimeException Not implemented yet
      */
-    public function forceRecovery(): void
+    public function forceRecovery(): never
     {
         throw new \RuntimeException('Not implemented yet');
     }
