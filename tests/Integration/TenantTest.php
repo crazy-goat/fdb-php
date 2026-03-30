@@ -4,27 +4,17 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
-use CrazyGoat\FoundationDB\Database;
-use CrazyGoat\FoundationDB\FoundationDB;
 use CrazyGoat\FoundationDB\Tenant;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 final class TenantTest extends TestCase
 {
-    private static bool $initialized = false;
-
-    private static Database $db;
+    use DatabaseCleanupTrait;
 
     protected function setUp(): void
     {
-        if (!self::$initialized) {
-            FoundationDB::reset();
-            FoundationDB::apiVersion(730);
-            self::$db = FoundationDB::open();
-            self::$initialized = true;
-        }
-
+        parent::setUp();
         $this->configureTenantMode();
     }
 
@@ -34,7 +24,7 @@ final class TenantTest extends TestCase
         $this->createTenantViaFdbcli('test_tenant_open');
 
         try {
-            $tenant = self::$db->openTenant('test_tenant_open');
+            $tenant = $this->getDatabase()->openTenant('test_tenant_open');
             self::assertInstanceOf(Tenant::class, $tenant);
         } finally {
             $this->deleteTenantViaFdbcli('test_tenant_open');
@@ -47,7 +37,7 @@ final class TenantTest extends TestCase
         $this->createTenantViaFdbcli('test_tenant_id');
 
         try {
-            $tenant = self::$db->openTenant('test_tenant_id');
+            $tenant = $this->getDatabase()->openTenant('test_tenant_id');
             $id = $tenant->getId();
             self::assertGreaterThan(0, $id);
         } finally {
@@ -61,8 +51,8 @@ final class TenantTest extends TestCase
         $this->createTenantViaFdbcli('test_tenant_same_id');
 
         try {
-            $tenant1 = self::$db->openTenant('test_tenant_same_id');
-            $tenant2 = self::$db->openTenant('test_tenant_same_id');
+            $tenant1 = $this->getDatabase()->openTenant('test_tenant_same_id');
+            $tenant2 = $this->getDatabase()->openTenant('test_tenant_same_id');
             self::assertSame($tenant1->getId(), $tenant2->getId());
         } finally {
             $this->deleteTenantViaFdbcli('test_tenant_same_id');
@@ -76,8 +66,8 @@ final class TenantTest extends TestCase
         $this->createTenantViaFdbcli('test_tenant_diff_b');
 
         try {
-            $tenantA = self::$db->openTenant('test_tenant_diff_a');
-            $tenantB = self::$db->openTenant('test_tenant_diff_b');
+            $tenantA = $this->getDatabase()->openTenant('test_tenant_diff_a');
+            $tenantB = $this->getDatabase()->openTenant('test_tenant_diff_b');
             self::assertNotSame($tenantA->getId(), $tenantB->getId());
         } finally {
             $this->deleteTenantViaFdbcli('test_tenant_diff_a');
@@ -91,7 +81,7 @@ final class TenantTest extends TestCase
         $this->createTenantViaFdbcli('test_tenant_crud');
 
         try {
-            $tenant = self::$db->openTenant('test_tenant_crud');
+            $tenant = $this->getDatabase()->openTenant('test_tenant_crud');
             $tr = $tenant->createTransaction();
             $tr->set('tenant_key', 'tenant_value');
             $tr->commit()->await();
@@ -114,7 +104,11 @@ final class TenantTest extends TestCase
         $output = (string) shell_exec(
             "fdbcli -C {$clusterFile} --exec 'configure tenant_mode=optional_experimental' 2>&1",
         );
-        if (!str_contains($output, 'committed') && !str_contains($output, 'already')) {
+        if (
+            !str_contains($output, 'committed')
+            && !str_contains($output, 'already')
+            && !str_contains($output, 'Configuration changed')
+        ) {
             self::markTestSkipped('Could not configure tenant mode: ' . $output);
         }
     }

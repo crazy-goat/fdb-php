@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
-use CrazyGoat\FoundationDB\Database;
-use CrazyGoat\FoundationDB\FoundationDB;
 use CrazyGoat\FoundationDB\KeyValue;
 use CrazyGoat\FoundationDB\RangeOptions;
 use CrazyGoat\FoundationDB\Transaction;
@@ -14,112 +12,145 @@ use PHPUnit\Framework\TestCase;
 
 final class GetRangeAllTest extends TestCase
 {
-    private static bool $initialized = false;
-
-    private static Database $db;
-
-    protected function setUp(): void
-    {
-        if (!self::$initialized) {
-            FoundationDB::reset();
-            FoundationDB::apiVersion(730);
-            self::$db = FoundationDB::open();
-            self::$initialized = true;
-        }
-
-        self::$db->clearRangeStartsWith('test/rangeall/');
-    }
+    use DatabaseCleanupTrait;
 
     #[Test]
     public function getRangeAllReturnsAllResults(): void
     {
-        self::$db->transact(function (Transaction $tr): void {
+        $this->getDatabase()->transact(function (Transaction $tr): void {
             for ($i = 0; $i < 10; $i++) {
-                $tr->set(sprintf('test/rangeall/key%02d', $i), "value$i");
+                $tr->set(sprintf('test/rangeall/key%02d', $i), "value{$i}");
             }
         });
 
-        $results = self::$db->getRangeAll('test/rangeall/', 'test/rangeall0');
+        $results = $this->getDatabase()->getRangeAll('test/rangeall/key00', 'test/rangeall/key99');
 
         self::assertCount(10, $results);
-        self::assertSame('test/rangeall/key00', $results[0]->key);
-        self::assertSame('value0', $results[0]->value);
-        self::assertSame('test/rangeall/key09', $results[9]->key);
+        foreach ($results as $i => $kv) {
+            self::assertInstanceOf(KeyValue::class, $kv);
+            self::assertSame(sprintf('test/rangeall/key%02d', $i), $kv->key);
+            self::assertSame("value{$i}", $kv->value);
+        }
     }
 
     #[Test]
-    public function getRangeAllStartsWithReturnsAllResults(): void
+    public function getRangeAllWithLimit(): void
     {
-        self::$db->transact(function (Transaction $tr): void {
-            for ($i = 0; $i < 5; $i++) {
-                $tr->set("test/rangeall/prefix$i", "val$i");
+        $this->getDatabase()->transact(function (Transaction $tr): void {
+            for ($i = 0; $i < 20; $i++) {
+                $tr->set(sprintf('test/rangeall/limit/key%02d', $i), "value{$i}");
             }
         });
 
-        $results = self::$db->getRangeAllStartsWith('test/rangeall/prefix');
+        $options = new RangeOptions(limit: 5);
+        $results = $this->getDatabase()->getRangeAll(
+            'test/rangeall/limit/key00',
+            'test/rangeall/limit/key99',
+            $options,
+        );
 
         self::assertCount(5, $results);
-        self::assertSame('test/rangeall/prefix0', $results[0]->key);
-        self::assertSame('val0', $results[0]->value);
     }
 
     #[Test]
-    public function getRangeAllWithLimitRespectsLimit(): void
+    public function getRangeAllWithReverse(): void
     {
-        self::$db->transact(function (Transaction $tr): void {
-            for ($i = 0; $i < 10; $i++) {
-                $tr->set(sprintf('test/rangeall/lim%02d', $i), "v$i");
+        $this->getDatabase()->transact(function (Transaction $tr): void {
+            for ($i = 0; $i < 5; $i++) {
+                $tr->set(sprintf('test/rangeall/reverse/key%02d', $i), "value{$i}");
             }
         });
 
-        $results = self::$db->getRangeAll(
-            'test/rangeall/lim',
-            'test/rangeall/lin',
-            new RangeOptions(limit: 3),
+        $options = new RangeOptions(reverse: true);
+        $results = $this->getDatabase()->getRangeAll(
+            'test/rangeall/reverse/key00',
+            'test/rangeall/reverse/key99',
+            $options,
         );
+
+        self::assertCount(5, $results);
+        // Results should be in reverse order
+        foreach ($results as $i => $kv) {
+            $expectedIndex = 4 - $i;
+            self::assertSame(sprintf('test/rangeall/reverse/key%02d', $expectedIndex), $kv->key);
+        }
+    }
+
+    #[Test]
+    public function getRangeAllEmptyRange(): void
+    {
+        $results = $this->getDatabase()->getRangeAll('test/rangeall/empty/a', 'test/rangeall/empty/z');
+
+        self::assertCount(0, $results);
+    }
+
+    #[Test]
+    public function getRangeAllWithSnapshot(): void
+    {
+        $this->getDatabase()->transact(function (Transaction $tr): void {
+            for ($i = 0; $i < 5; $i++) {
+                $tr->set(sprintf('test/rangeall/snapshot/key%02d', $i), "value{$i}");
+            }
+        });
+
+        // Use snapshot via transaction, not RangeOptions
+        $tr = $this->getDatabase()->createTransaction();
+        $snap = $tr->snapshot();
+        $results = $snap->getRange(
+            'test/rangeall/snapshot/key00',
+            'test/rangeall/snapshot/key99',
+        )->toArray();
+
+        self::assertCount(5, $results);
+    }
+
+    #[Test]
+    public function getRangeAllWithStreamingMode(): void
+    {
+        $this->getDatabase()->transact(function (Transaction $tr): void {
+            for ($i = 0; $i < 100; $i++) {
+                $tr->set(sprintf('test/rangeall/stream/key%03d', $i), "value{$i}");
+            }
+        });
+
+        $options = new RangeOptions(mode: \CrazyGoat\FoundationDB\Enum\StreamingMode::Small);
+        $results = $this->getDatabase()->getRangeAll(
+            'test/rangeall/stream/key000',
+            'test/rangeall/stream/key999',
+            $options,
+        );
+
+        self::assertCount(100, $results);
+    }
+
+    #[Test]
+    public function getRangeAllStartsWith(): void
+    {
+        $this->getDatabase()->transact(function (Transaction $tr): void {
+            $tr->set('test/rangeall/prefix/a', '1');
+            $tr->set('test/rangeall/prefix/b', '2');
+            $tr->set('test/rangeall/prefix/c', '3');
+            $tr->set('test/rangeall/other', 'other');
+        });
+
+        $results = $this->getDatabase()->getRangeAllStartsWith('test/rangeall/prefix/');
 
         self::assertCount(3, $results);
     }
 
     #[Test]
-    public function getRangeAllWithReverseReturnsReversed(): void
+    public function getRangeAllWithKeySelectors(): void
     {
-        self::$db->transact(function (Transaction $tr): void {
-            for ($i = 0; $i < 5; $i++) {
-                $tr->set(sprintf('test/rangeall/rev%02d', $i), "v$i");
-            }
+        $this->getDatabase()->transact(function (Transaction $tr): void {
+            $tr->set('test/rangeall/selectors/a', '1');
+            $tr->set('test/rangeall/selectors/b', '2');
+            $tr->set('test/rangeall/selectors/c', '3');
         });
 
-        $results = self::$db->getRangeAll(
-            'test/rangeall/rev',
-            'test/rangeall/rew',
-            new RangeOptions(reverse: true),
-        );
+        $begin = \CrazyGoat\FoundationDB\KeySelector::firstGreaterOrEqual('test/rangeall/selectors/a');
+        $end = \CrazyGoat\FoundationDB\KeySelector::firstGreaterOrEqual('test/rangeall/selectors/d');
 
-        self::assertCount(5, $results);
-        self::assertSame('test/rangeall/rev04', $results[0]->key);
-        self::assertSame('test/rangeall/rev00', $results[4]->key);
-    }
-
-    #[Test]
-    public function getRangeAllEmptyRangeReturnsEmptyArray(): void
-    {
-        $results = self::$db->getRangeAllStartsWith('test/rangeall/nonexistent');
-
-        self::assertSame([], $results);
-    }
-
-    #[Test]
-    public function getRangeAllOnTransactionLevel(): void
-    {
-        self::$db->transact(function (Transaction $tr): void {
-            $tr->set('test/rangeall/txn1', 'a');
-            $tr->set('test/rangeall/txn2', 'b');
-            $tr->set('test/rangeall/txn3', 'c');
-        });
-
-        /** @var list<KeyValue> $results */
-        $results = self::$db->transact(fn(Transaction $tr): array => $tr->getRangeAllStartsWith('test/rangeall/txn'));
+        $results = $this->getDatabase()->getRangeAll($begin, $end);
 
         self::assertCount(3, $results);
     }

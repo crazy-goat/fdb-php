@@ -4,34 +4,20 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
-use CrazyGoat\FoundationDB\Database;
-use CrazyGoat\FoundationDB\FoundationDB;
 use CrazyGoat\FoundationDB\Locality;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 final class LocalityTest extends TestCase
 {
-    private static bool $initialized = false;
-
-    private static Database $db;
-
-    protected function setUp(): void
-    {
-        if (!self::$initialized) {
-            FoundationDB::reset();
-            FoundationDB::apiVersion(730);
-            self::$db = FoundationDB::open();
-            self::$initialized = true;
-        }
-    }
+    use DatabaseCleanupTrait;
 
     #[Test]
     public function getBoundaryKeysReturnsNonEmptyArray(): void
     {
-        self::$db->set('test/locality/a', 'value');
+        $this->getDatabase()->set('test/locality/a', 'value');
 
-        $boundaries = Locality::getBoundaryKeys(self::$db, '', "\xFF");
+        $boundaries = Locality::getBoundaryKeys($this->getDatabase(), '', "\xFF");
 
         self::assertNotEmpty($boundaries);
     }
@@ -39,7 +25,7 @@ final class LocalityTest extends TestCase
     #[Test]
     public function getBoundaryKeysContainsOnlyStrings(): void
     {
-        $boundaries = Locality::getBoundaryKeys(self::$db, '', "\xFF");
+        $boundaries = Locality::getBoundaryKeys($this->getDatabase(), '', "\xFF");
 
         self::assertNotEmpty($boundaries);
         self::assertContainsOnly('string', $boundaries);
@@ -49,10 +35,10 @@ final class LocalityTest extends TestCase
     public function getBoundaryKeysWithNarrowRange(): void
     {
         for ($i = 0; $i < 5; $i++) {
-            self::$db->set("test/locality/narrow/{$i}", str_repeat('x', 100));
+            $this->getDatabase()->set("test/locality/narrow/{$i}", str_repeat('x', 100));
         }
 
-        $boundaries = Locality::getBoundaryKeys(self::$db, 'test/locality/narrow/', 'test/locality/narrow0');
+        $boundaries = Locality::getBoundaryKeys($this->getDatabase(), 'test/locality/narrow/', 'test/locality/narrow0');
 
         self::assertGreaterThanOrEqual(0, count($boundaries));
     }
@@ -60,7 +46,7 @@ final class LocalityTest extends TestCase
     #[Test]
     public function getBoundaryKeysWithEmptyRangeReturnsEmptyArray(): void
     {
-        $boundaries = Locality::getBoundaryKeys(self::$db, "\xFE", "\xFE");
+        $boundaries = Locality::getBoundaryKeys($this->getDatabase(), "\xFE", "\xFE");
 
         self::assertSame([], $boundaries);
     }
@@ -68,7 +54,7 @@ final class LocalityTest extends TestCase
     #[Test]
     public function getBoundaryKeysAreSorted(): void
     {
-        $boundaries = Locality::getBoundaryKeys(self::$db, '', "\xFF");
+        $boundaries = Locality::getBoundaryKeys($this->getDatabase(), '', "\xFF");
 
         self::assertGreaterThanOrEqual(1, count($boundaries));
 
