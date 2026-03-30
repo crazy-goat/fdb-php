@@ -1,0 +1,34 @@
+services:
+  fdb:
+    image: foundationdb/foundationdb:7.3.75
+    entrypoint: ["/usr/bin/tini", "-g", "--", "/var/fdb/scripts/fdb_single.bash"]
+    environment:
+      FDB_NETWORKING_MODE: container
+    ports:
+      - "4500:4500"
+    volumes:
+      - fdb-data:/var/fdb/data
+    healthcheck:
+      test: ["CMD", "fdbcli", "--exec", "status minimal"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  php:
+    build:
+      context: ./docker/php
+    depends_on:
+      fdb:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    environment:
+      FDB_CLUSTER_FILE: /app/fdb.cluster
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash", "-c", "echo \"docker:docker@fdb:4500\" > /app/fdb.cluster && exec tail -f /dev/null"]
+
+volumes:
+  fdb-data:
