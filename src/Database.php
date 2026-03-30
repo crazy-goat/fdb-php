@@ -123,6 +123,20 @@ final class Database implements Transactor, ReadTransactor
     }
 
     /**
+     * Clear all data from the database.
+     *
+     * WARNING: This is a destructive operation that removes ALL keys from the database.
+     * Use with caution, primarily intended for testing and administrative operations.
+     */
+    public function clearAll(): void
+    {
+        $this->transact(function (Transaction $tr): void {
+            // Clear entire keyspace from \x00 to \xFF
+            $tr->clearRange("\x00", "\xFF");
+        });
+    }
+
+    /**
      * @return list<KeyValue>
      */
     public function getRange(

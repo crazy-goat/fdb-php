@@ -16,40 +16,20 @@ use PHPUnit\Framework\TestCase;
 
 final class DirectoryTest extends TestCase
 {
-    private static bool $initialized = false;
-
-    private static Database $db;
+    use DatabaseCleanupTrait;
 
     private DirectoryLayer $dir;
 
     protected function setUp(): void
     {
-        if (!self::$initialized) {
-            FoundationDB::reset();
-            FoundationDB::apiVersion(730);
-            self::$db = FoundationDB::open();
-            self::$initialized = true;
-        }
-
-        // Clear all directory-related data
-        self::$db->transact(function (Transaction $tr): void {
-            // Clear directory layer prefix
-            $tr->clearRangeStartsWith("\xFE");
-            // Clear any test data that might interfere
-            $tr->clearRangeStartsWith("test_");
-            $tr->clearRangeStartsWith("app_");
-            $tr->clearRangeStartsWith("user_");
-            $tr->clearRangeStartsWith("tenant_");
-            $tr->clearRangeStartsWith("partition_");
-        });
-
+        parent::setUp();
         $this->dir = new DirectoryLayer();
     }
 
     #[Test]
     public function createDirectory(): void
     {
-        $result = $this->dir->create(self::$db, ['app', 'users']);
+        $result = $this->dir->create($this->getDatabase(), ['app', 'users']);
 
         self::assertInstanceOf(DirectorySubspace::class, $result);
         self::assertSame(['app', 'users'], $result->getPath());
@@ -58,7 +38,7 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function createDirectoryWithLayer(): void
     {
-        $result = $this->dir->create(self::$db, ['app', 'data'], 'my_layer');
+        $result = $this->dir->create($this->getDatabase(), ['app', 'data'], 'my_layer');
 
         self::assertSame('my_layer', $result->getLayer());
     }
@@ -66,19 +46,19 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function createDuplicateDirectoryThrows(): void
     {
-        $this->dir->create(self::$db, ['app', 'dup']);
+        $this->dir->create($this->getDatabase(), ['app', 'dup']);
 
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('Directory already exists');
 
-        $this->dir->create(self::$db, ['app', 'dup']);
+        $this->dir->create($this->getDatabase(), ['app', 'dup']);
     }
 
     #[Test]
     public function openExistingDirectory(): void
     {
-        $created = $this->dir->create(self::$db, ['app', 'openme']);
-        $opened = $this->dir->open(self::$db, ['app', 'openme']);
+        $created = $this->dir->create($this->getDatabase(), ['app', 'openme']);
+        $opened = $this->dir->open($this->getDatabase(), ['app', 'openme']);
 
         self::assertSame($created->rawPrefix, $opened->rawPrefix);
         self::assertSame(['app', 'openme'], $opened->getPath());
@@ -90,24 +70,24 @@ final class DirectoryTest extends TestCase
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('Directory does not exist');
 
-        $this->dir->open(self::$db, ['nonexistent']);
+        $this->dir->open($this->getDatabase(), ['nonexistent']);
     }
 
     #[Test]
     public function openWithWrongLayerThrows(): void
     {
-        $this->dir->create(self::$db, ['app', 'layered'], 'layer_a');
+        $this->dir->create($this->getDatabase(), ['app', 'layered'], 'layer_a');
 
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('different layer');
 
-        $this->dir->open(self::$db, ['app', 'layered'], 'layer_b');
+        $this->dir->open($this->getDatabase(), ['app', 'layered'], 'layer_b');
     }
 
     #[Test]
     public function createOrOpenCreatesNew(): void
     {
-        $result = $this->dir->createOrOpen(self::$db, ['app', 'cor_new']);
+        $result = $this->dir->createOrOpen($this->getDatabase(), ['app', 'cor_new']);
 
         self::assertInstanceOf(DirectorySubspace::class, $result);
         self::assertSame(['app', 'cor_new'], $result->getPath());
@@ -116,8 +96,8 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function createOrOpenOpensExisting(): void
     {
-        $created = $this->dir->create(self::$db, ['app', 'cor_existing']);
-        $opened = $this->dir->createOrOpen(self::$db, ['app', 'cor_existing']);
+        $created = $this->dir->create($this->getDatabase(), ['app', 'cor_existing']);
+        $opened = $this->dir->createOrOpen($this->getDatabase(), ['app', 'cor_existing']);
 
         self::assertSame($created->rawPrefix, $opened->rawPrefix);
     }
@@ -125,36 +105,36 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function createOrOpenWithMismatchedLayerThrows(): void
     {
-        $this->dir->create(self::$db, ['app', 'cor_layer'], 'layer_a');
+        $this->dir->create($this->getDatabase(), ['app', 'cor_layer'], 'layer_a');
 
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('different layer');
 
-        $this->dir->createOrOpen(self::$db, ['app', 'cor_layer'], 'layer_b');
+        $this->dir->createOrOpen($this->getDatabase(), ['app', 'cor_layer'], 'layer_b');
     }
 
     #[Test]
     public function existsReturnsTrueForExisting(): void
     {
-        $this->dir->create(self::$db, ['app', 'exists_test']);
+        $this->dir->create($this->getDatabase(), ['app', 'exists_test']);
 
-        self::assertTrue($this->dir->exists(self::$db, ['app', 'exists_test']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'exists_test']));
     }
 
     #[Test]
     public function existsReturnsFalseForNonExistent(): void
     {
-        self::assertFalse($this->dir->exists(self::$db, ['nonexistent']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['nonexistent']));
     }
 
     #[Test]
     public function listSubdirectories(): void
     {
-        $this->dir->create(self::$db, ['app', 'list_a']);
-        $this->dir->create(self::$db, ['app', 'list_b']);
-        $this->dir->create(self::$db, ['app', 'list_c']);
+        $this->dir->create($this->getDatabase(), ['app', 'list_a']);
+        $this->dir->create($this->getDatabase(), ['app', 'list_b']);
+        $this->dir->create($this->getDatabase(), ['app', 'list_c']);
 
-        $result = $this->dir->list(self::$db, ['app']);
+        $result = $this->dir->list($this->getDatabase(), ['app']);
 
         self::assertContains('list_a', $result);
         self::assertContains('list_b', $result);
@@ -164,9 +144,9 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function listEmptyDirectory(): void
     {
-        $this->dir->create(self::$db, ['app', 'empty_dir']);
+        $this->dir->create($this->getDatabase(), ['app', 'empty_dir']);
 
-        $result = $this->dir->list(self::$db, ['app', 'empty_dir']);
+        $result = $this->dir->list($this->getDatabase(), ['app', 'empty_dir']);
 
         self::assertSame([], $result);
     }
@@ -174,10 +154,10 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function listRootDirectory(): void
     {
-        $this->dir->create(self::$db, ['root_a']);
-        $this->dir->create(self::$db, ['root_b']);
+        $this->dir->create($this->getDatabase(), ['root_a']);
+        $this->dir->create($this->getDatabase(), ['root_b']);
 
-        $result = $this->dir->list(self::$db);
+        $result = $this->dir->list($this->getDatabase());
 
         self::assertContains('root_a', $result);
         self::assertContains('root_b', $result);
@@ -186,20 +166,20 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function moveDirectory(): void
     {
-        $this->dir->create(self::$db, ['app', 'move_src']);
+        $this->dir->create($this->getDatabase(), ['app', 'move_src']);
 
-        self::$db->set(
-            $this->dir->open(self::$db, ['app', 'move_src'])->pack(['key1']),
+        $this->getDatabase()->set(
+            $this->dir->open($this->getDatabase(), ['app', 'move_src'])->pack(['key1']),
             'value1',
         );
 
-        $moved = $this->dir->move(self::$db, ['app', 'move_src'], ['app', 'move_dst']);
+        $moved = $this->dir->move($this->getDatabase(), ['app', 'move_src'], ['app', 'move_dst']);
 
         self::assertSame(['app', 'move_dst'], $moved->getPath());
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'move_src']));
-        self::assertTrue($this->dir->exists(self::$db, ['app', 'move_dst']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'move_src']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'move_dst']));
 
-        $value = self::$db->get($moved->pack(['key1']));
+        $value = $this->getDatabase()->get($moved->pack(['key1']));
         self::assertSame('value1', $value);
     }
 
@@ -209,30 +189,30 @@ final class DirectoryTest extends TestCase
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('Source directory does not exist');
 
-        $this->dir->move(self::$db, ['nonexistent'], ['destination']);
+        $this->dir->move($this->getDatabase(), ['nonexistent'], ['destination']);
     }
 
     #[Test]
     public function moveToExistingDirectoryThrows(): void
     {
-        $this->dir->create(self::$db, ['app', 'move_a']);
-        $this->dir->create(self::$db, ['app', 'move_b']);
+        $this->dir->create($this->getDatabase(), ['app', 'move_a']);
+        $this->dir->create($this->getDatabase(), ['app', 'move_b']);
 
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('Destination directory already exists');
 
-        $this->dir->move(self::$db, ['app', 'move_a'], ['app', 'move_b']);
+        $this->dir->move($this->getDatabase(), ['app', 'move_a'], ['app', 'move_b']);
     }
 
     #[Test]
     public function removeDirectory(): void
     {
-        $this->dir->create(self::$db, ['app', 'removeme']);
+        $this->dir->create($this->getDatabase(), ['app', 'removeme']);
 
-        $result = $this->dir->remove(self::$db, ['app', 'removeme']);
+        $result = $this->dir->remove($this->getDatabase(), ['app', 'removeme']);
 
         self::assertTrue($result);
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'removeme']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'removeme']));
     }
 
     #[Test]
@@ -241,24 +221,24 @@ final class DirectoryTest extends TestCase
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('Directory does not exist');
 
-        $this->dir->remove(self::$db, ['nonexistent']);
+        $this->dir->remove($this->getDatabase(), ['nonexistent']);
     }
 
     #[Test]
     public function removeIfExistsRemovesExisting(): void
     {
-        $this->dir->create(self::$db, ['app', 'rife']);
+        $this->dir->create($this->getDatabase(), ['app', 'rife']);
 
-        $result = $this->dir->removeIfExists(self::$db, ['app', 'rife']);
+        $result = $this->dir->removeIfExists($this->getDatabase(), ['app', 'rife']);
 
         self::assertTrue($result);
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'rife']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'rife']));
     }
 
     #[Test]
     public function removeIfExistsReturnsFalseForNonExistent(): void
     {
-        $result = $this->dir->removeIfExists(self::$db, ['nonexistent']);
+        $result = $this->dir->removeIfExists($this->getDatabase(), ['nonexistent']);
 
         self::assertFalse($result);
     }
@@ -266,23 +246,23 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function nestedDirectories(): void
     {
-        $this->dir->create(self::$db, ['app', 'level1', 'level2', 'level3']);
+        $this->dir->create($this->getDatabase(), ['app', 'level1', 'level2', 'level3']);
 
-        self::assertTrue($this->dir->exists(self::$db, ['app']));
-        self::assertTrue($this->dir->exists(self::$db, ['app', 'level1']));
-        self::assertTrue($this->dir->exists(self::$db, ['app', 'level1', 'level2']));
-        self::assertTrue($this->dir->exists(self::$db, ['app', 'level1', 'level2', 'level3']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'level1']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'level1', 'level2']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'level1', 'level2', 'level3']));
     }
 
     #[Test]
     public function directoryAsSubspace(): void
     {
-        $users = $this->dir->create(self::$db, ['app', 'subspace_test']);
+        $users = $this->dir->create($this->getDatabase(), ['app', 'subspace_test']);
 
-        self::$db->set($users->pack(['alice', 'name']), 'Alice');
-        self::$db->set($users->pack(['alice', 'email']), 'alice@example.com');
+        $this->getDatabase()->set($users->pack(['alice', 'name']), 'Alice');
+        $this->getDatabase()->set($users->pack(['alice', 'email']), 'alice@example.com');
 
-        $value = self::$db->get($users->pack(['alice', 'name']));
+        $value = $this->getDatabase()->get($users->pack(['alice', 'name']));
         self::assertSame('Alice', $value);
 
         $unpacked = $users->unpack($users->pack(['alice', 'name']));
@@ -293,8 +273,8 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function directorySubspaceCreateOrOpen(): void
     {
-        $app = $this->dir->createOrOpen(self::$db, ['app']);
-        $users = $app->createOrOpen(self::$db, ['users']);
+        $app = $this->dir->createOrOpen($this->getDatabase(), ['app']);
+        $users = $app->createOrOpen($this->getDatabase(), ['users']);
 
         self::assertSame(['app', 'users'], $users->getPath());
     }
@@ -302,11 +282,11 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function directorySubspaceList(): void
     {
-        $app = $this->dir->createOrOpen(self::$db, ['app']);
-        $app->create(self::$db, ['sub_a']);
-        $app->create(self::$db, ['sub_b']);
+        $app = $this->dir->createOrOpen($this->getDatabase(), ['app']);
+        $app->create($this->getDatabase(), ['sub_a']);
+        $app->create($this->getDatabase(), ['sub_b']);
 
-        $result = $app->listSubdirectories(self::$db);
+        $result = $app->listSubdirectories($this->getDatabase());
 
         self::assertContains('sub_a', $result);
         self::assertContains('sub_b', $result);
@@ -315,55 +295,55 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function directorySubspaceExists(): void
     {
-        $app = $this->dir->createOrOpen(self::$db, ['app']);
-        $app->create(self::$db, ['exists_sub']);
+        $app = $this->dir->createOrOpen($this->getDatabase(), ['app']);
+        $app->create($this->getDatabase(), ['exists_sub']);
 
-        self::assertTrue($app->exists(self::$db, ['exists_sub']));
-        self::assertFalse($app->exists(self::$db, ['nonexistent_sub']));
+        self::assertTrue($app->exists($this->getDatabase(), ['exists_sub']));
+        self::assertFalse($app->exists($this->getDatabase(), ['nonexistent_sub']));
     }
 
     #[Test]
     public function directorySubspaceRemove(): void
     {
-        $app = $this->dir->createOrOpen(self::$db, ['app']);
-        $app->create(self::$db, ['remove_sub']);
+        $app = $this->dir->createOrOpen($this->getDatabase(), ['app']);
+        $app->create($this->getDatabase(), ['remove_sub']);
 
-        $result = $app->remove(self::$db, ['remove_sub']);
+        $result = $app->remove($this->getDatabase(), ['remove_sub']);
 
         self::assertTrue($result);
-        self::assertFalse($app->exists(self::$db, ['remove_sub']));
+        self::assertFalse($app->exists($this->getDatabase(), ['remove_sub']));
     }
 
     #[Test]
     public function directorySubspaceMoveTo(): void
     {
-        $this->dir->create(self::$db, ['app', 'moveto_src']);
+        $this->dir->create($this->getDatabase(), ['app', 'moveto_src']);
 
-        $src = $this->dir->open(self::$db, ['app', 'moveto_src']);
-        $moved = $src->moveTo(self::$db, ['app', 'moveto_dst']);
+        $src = $this->dir->open($this->getDatabase(), ['app', 'moveto_src']);
+        $moved = $src->moveTo($this->getDatabase(), ['app', 'moveto_dst']);
 
         self::assertSame(['app', 'moveto_dst'], $moved->getPath());
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'moveto_src']));
-        self::assertTrue($this->dir->exists(self::$db, ['app', 'moveto_dst']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'moveto_src']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'moveto_dst']));
     }
 
     #[Test]
     public function removeDirectoryWithChildren(): void
     {
-        $this->dir->create(self::$db, ['app', 'parent', 'child1']);
-        $this->dir->create(self::$db, ['app', 'parent', 'child2']);
+        $this->dir->create($this->getDatabase(), ['app', 'parent', 'child1']);
+        $this->dir->create($this->getDatabase(), ['app', 'parent', 'child2']);
 
-        $this->dir->remove(self::$db, ['app', 'parent']);
+        $this->dir->remove($this->getDatabase(), ['app', 'parent']);
 
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'parent']));
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'parent', 'child1']));
-        self::assertFalse($this->dir->exists(self::$db, ['app', 'parent', 'child2']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'parent']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'parent', 'child1']));
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'parent', 'child2']));
     }
 
     #[Test]
     public function directoryPartitionBlocksSubspaceOps(): void
     {
-        $partition = $this->dir->create(self::$db, ['app', 'partition'], 'partition');
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'partition'], 'partition');
 
         self::assertInstanceOf(DirectoryPartition::class, $partition);
 
@@ -376,7 +356,7 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function directoryPartitionPackThrows(): void
     {
-        $partition = $this->dir->create(self::$db, ['app', 'partition_pack'], 'partition');
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'partition_pack'], 'partition');
 
         $this->expectException(\LogicException::class);
         $partition->pack(['test']);
@@ -385,15 +365,15 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function directoryPartitionSubdirectories(): void
     {
-        $partition = $this->dir->create(self::$db, ['app', 'partition_sub'], 'partition');
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'partition_sub'], 'partition');
 
         self::assertInstanceOf(DirectoryPartition::class, $partition);
 
-        $sub = $partition->create(self::$db, ['child']);
+        $sub = $partition->create($this->getDatabase(), ['child']);
         self::assertInstanceOf(DirectorySubspace::class, $sub);
         self::assertSame(['child'], $sub->getPath());
 
-        self::assertTrue($partition->exists(self::$db, ['child']));
+        self::assertTrue($partition->exists($this->getDatabase(), ['child']));
     }
 
     #[Test]
@@ -402,15 +382,15 @@ final class DirectoryTest extends TestCase
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessage('Path must not be empty');
 
-        $this->dir->create(self::$db, []);
+        $this->dir->create($this->getDatabase(), []);
     }
 
     #[Test]
     public function directoryPrefixesAreUnique(): void
     {
-        $dir1 = $this->dir->create(self::$db, ['unique_a']);
-        $dir2 = $this->dir->create(self::$db, ['unique_b']);
-        $dir3 = $this->dir->create(self::$db, ['unique_c']);
+        $dir1 = $this->dir->create($this->getDatabase(), ['unique_a']);
+        $dir2 = $this->dir->create($this->getDatabase(), ['unique_b']);
+        $dir3 = $this->dir->create($this->getDatabase(), ['unique_c']);
 
         self::assertNotSame($dir1->rawPrefix, $dir2->rawPrefix);
         self::assertNotSame($dir2->rawPrefix, $dir3->rawPrefix);
@@ -420,16 +400,16 @@ final class DirectoryTest extends TestCase
     #[Test]
     public function directoryDataIsolation(): void
     {
-        $users = $this->dir->create(self::$db, ['iso', 'users']);
-        $orders = $this->dir->create(self::$db, ['iso', 'orders']);
+        $users = $this->dir->create($this->getDatabase(), ['iso', 'users']);
+        $orders = $this->dir->create($this->getDatabase(), ['iso', 'orders']);
 
-        self::$db->set($users->pack(['alice']), 'user_data');
-        self::$db->set($orders->pack(['order1']), 'order_data');
+        $this->getDatabase()->set($users->pack(['alice']), 'user_data');
+        $this->getDatabase()->set($orders->pack(['order1']), 'order_data');
 
-        self::assertSame('user_data', self::$db->get($users->pack(['alice'])));
-        self::assertSame('order_data', self::$db->get($orders->pack(['order1'])));
+        self::assertSame('user_data', $this->getDatabase()->get($users->pack(['alice'])));
+        self::assertSame('order_data', $this->getDatabase()->get($orders->pack(['order1'])));
 
-        self::assertNull(self::$db->get($users->pack(['order1'])));
-        self::assertNull(self::$db->get($orders->pack(['alice'])));
+        self::assertNull($this->getDatabase()->get($users->pack(['order1'])));
+        self::assertNull($this->getDatabase()->get($orders->pack(['alice'])));
     }
 }
