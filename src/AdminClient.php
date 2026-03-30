@@ -130,62 +130,119 @@ final readonly class AdminClient
     /**
      * Configure the database.
      *
-     * @throws \RuntimeException Not implemented yet
+     * Uses special keys to change database configuration.
+     *
+     * @param string $configuration Configuration string (e.g., "double ssd")
+     * @throws FDBException If configuration fails
      */
-    public function configure(): never
+    public function configure(string $configuration): void
     {
-        throw new \RuntimeException('Not implemented yet');
+        $this->database->transact(function (Transaction $tr) use ($configuration): void {
+            $tr->options()->setSpecialKeySpaceEnableWrites();
+
+            // Parse configuration (e.g., "double ssd" -> redundancy: double, storage: ssd)
+            $parts = explode(' ', $configuration);
+            $redundancy = $parts[0];
+            $storage = $parts[1] ?? 'ssd';
+
+            // Set configuration via special keys
+            $tr->set("\xff\xff/configuration/redundancy", $redundancy);
+            $tr->set("\xff\xff/configuration/storage", $storage);
+        });
     }
 
     /**
      * Exclude a server from the database.
      *
-     * @throws \RuntimeException Not implemented yet
+     * Uses special key: \xff\xff/management/excluded/<address>
+     *
+     * @param string $address Server address (e.g., "127.0.0.1:4500")
+     * @throws FDBException If exclusion fails
      */
-    public function excludeServer(): never
+    public function excludeServer(string $address): void
     {
-        throw new \RuntimeException('Not implemented yet');
+        $this->database->transact(function (Transaction $tr) use ($address): void {
+            $tr->options()->setSpecialKeySpaceEnableWrites();
+
+            $key = "\xff\xff/management/excluded/{$address}";
+            $tr->set($key, '');
+        });
     }
 
     /**
      * Include a previously excluded server back into the database.
      *
-     * @throws \RuntimeException Not implemented yet
+     * Uses special key: \xff\xff/management/excluded/<address>
+     *
+     * @param string $address Server address (e.g., "127.0.0.1:4500")
+     * @throws FDBException If inclusion fails
      */
-    public function includeServer(): never
+    public function includeServer(string $address): void
     {
-        throw new \RuntimeException('Not implemented yet');
+        $this->database->transact(function (Transaction $tr) use ($address): void {
+            $tr->options()->setSpecialKeySpaceEnableWrites();
+
+            $key = "\xff\xff/management/excluded/{$address}";
+            $tr->clear($key);
+        });
     }
 
     /**
      * Run a consistency check on the database.
      *
+     * Uses special key: \xff\xff/management/consistency_check_suspended
+     *
      * @return bool True if database is consistent
-     * @throws \RuntimeException Not implemented yet
+     * @throws FDBException If check fails
      */
     public function consistencyCheck(): bool
     {
-        throw new \RuntimeException('Not implemented yet');
+        // Check if consistency check is suspended
+        $result = $this->database->get("\xff\xff/management/consistency_check_suspended");
+
+        // If key exists, consistency check is suspended (not running)
+        return $result === null;
     }
 
     /**
      * Get detailed cluster status.
      *
+     * Uses special key: \xff\xff/status/json
+     *
      * @return array<string, mixed> Structured cluster status information
-     * @throws \RuntimeException Not implemented yet
+     * @throws FDBException If status retrieval fails
      */
     public function getClusterStatus(): array
     {
-        throw new \RuntimeException('Not implemented yet');
+        $json = $this->database->get("\xff\xff/status/json");
+
+        if ($json === null) {
+            throw new \RuntimeException('Failed to retrieve cluster status');
+        }
+
+        /** @var array<string, mixed> $data */
+        $data = json_decode($json, true);
+
+        return $data;
     }
 
     /**
      * Force database recovery (use with caution!).
      *
-     * @throws \RuntimeException Not implemented yet
+     * This is an emergency operation that forces the database to recover.
+     * May result in data loss if recent mutations haven't been replicated.
+     *
+     * @param string $dcId Datacenter ID to recover into
+     * @throws FDBException If recovery fails
+     * @warning This operation may cause data loss. Use only in emergency situations.
      */
-    public function forceRecovery(): never
+    public function forceRecovery(string $dcId): void
     {
-        throw new \RuntimeException('Not implemented yet');
+        $this->database->transact(function (Transaction $tr) use ($dcId): void {
+            $tr->options()->setSpecialKeySpaceEnableWrites();
+
+            // Use special key to force recovery
+            $tr->set("\xff\xff/management/force_recovery", $dcId);
+        });
     }
 }
