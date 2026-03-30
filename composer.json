@@ -1,5 +1,5 @@
 {
-    "name": "crazy-goat/foundationdb",
+    "name": "crazy-goat/fdb-php",
     "description": "FoundationDB client for PHP",
     "type": "library",
     "license": "MIT",
