@@ -1,5 +1,4 @@
 services:
-  # FDB Coordinator 1
   fdb-coord-1:
     image: foundationdb/foundationdb:7.3.75
     hostname: fdb-coord-1
@@ -11,8 +10,13 @@ services:
       - "4500:4500"
     volumes:
       - fdb-coord-1-data:/var/fdb/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rm -rf /var/fdb/logs/* 2>/dev/null || true
+        exec /usr/bin/tini -g -- /var/fdb/scripts/fdb.bash
 
-  # FDB Coordinator 2
   fdb-coord-2:
     image: foundationdb/foundationdb:7.3.75
     hostname: fdb-coord-2
@@ -24,8 +28,13 @@ services:
       - "4501:4501"
     volumes:
       - fdb-coord-2-data:/var/fdb/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rm -rf /var/fdb/logs/* 2>/dev/null || true
+        exec /usr/bin/tini -g -- /var/fdb/scripts/fdb.bash
 
-  # FDB Coordinator 3
   fdb-coord-3:
     image: foundationdb/foundationdb:7.3.75
     hostname: fdb-coord-3
@@ -37,45 +46,90 @@ services:
       - "4502:4502"
     volumes:
       - fdb-coord-3-data:/var/fdb/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rm -rf /var/fdb/logs/* 2>/dev/null || true
+        exec /usr/bin/tini -g -- /var/fdb/scripts/fdb.bash
 
-  # FDB Configurator
+  fdb-server-1:
+    image: foundationdb/foundationdb:7.3.75
+    hostname: fdb-server-1
+    depends_on:
+      - fdb-coord-1
+      - fdb-coord-2
+      - fdb-coord-3
+    environment:
+      FDB_PORT: 4510
+      FDB_CLUSTER_FILE_CONTENTS: |
+        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+    ports:
+      - "4510:4510"
+    volumes:
+      - fdb-server-1-data:/var/fdb/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rm -rf /var/fdb/logs/* 2>/dev/null || true
+        exec /usr/bin/tini -g -- /var/fdb/scripts/fdb.bash
+
+  fdb-server-2:
+    image: foundationdb/foundationdb:7.3.75
+    hostname: fdb-server-2
+    depends_on:
+      - fdb-coord-1
+      - fdb-coord-2
+      - fdb-coord-3
+    environment:
+      FDB_PORT: 4511
+      FDB_CLUSTER_FILE_CONTENTS: |
+        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+    ports:
+      - "4511:4511"
+    volumes:
+      - fdb-server-2-data:/var/fdb/data
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rm -rf /var/fdb/logs/* 2>/dev/null || true
+        exec /usr/bin/tini -g -- /var/fdb/scripts/fdb.bash
+
   fdb-config:
     image: foundationdb/foundationdb:7.3.75
     depends_on:
       - fdb-coord-1
       - fdb-coord-2
       - fdb-coord-3
+      - fdb-server-1
+      - fdb-server-2
     environment:
       FDB_PORT: 4500
       FDB_CLUSTER_FILE_CONTENTS: |
         docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
-    entrypoint: ["/bin/sh", "-c"]
-    command:
+    entrypoint:
+      - /bin/sh
+      - -c
       - |
         set -e
-        
-        # Create cluster file
+        rm -rf /var/fdb/logs/* 2>/dev/null || true
         mkdir -p /var/fdb
         echo "docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502" > /var/fdb/fdb.cluster
         
-        # Wait for all coordinators to be ready
-        echo "Waiting for FDB coordinators..."
-        for i in $(seq 1 60); do
+        echo "Waiting for FDB cluster..."
+        for i in $$(seq 1 60); do
           if fdbcli --exec "status" 2>/dev/null | grep -q "processes"; then
-            echo "Coordinators are ready!"
+            echo "Cluster is ready!"
             break
           fi
           sleep 2
         done
         
-        # Configure the cluster with single memory (uses less disk)
-        echo "Configuring 3-node FDB cluster..."
-        fdbcli --exec "configure new single memory" || echo "Cluster may already be configured"
-        
-        # Show status
+        echo "Configuring FDB cluster..."
+        fdbcli --exec "configure new double ssd" || echo "Already configured"
         fdbcli --exec "status"
-        
-        # Keep container running
         exec tail -f /dev/null
 
   php:
@@ -90,14 +144,16 @@ services:
     working_dir: /app
     stdin_open: true
     tty: true
-    entrypoint: 
+    entrypoint:
       - /bin/bash
       - -c
       - |
-        echo "docker:docker@127.0.0.1:4500,127.0.0.1:4501,127.0.0.1:4502" > /app/fdb.cluster
+        echo "docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502" > /app/fdb.cluster
         exec tail -f /dev/null
 
 volumes:
   fdb-coord-1-data:
   fdb-coord-2-data:
   fdb-coord-3-data:
+  fdb-server-1-data:
+  fdb-server-2-data:
