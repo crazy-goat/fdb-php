@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Fixed
+- [#56] PHPStan: configure `--memory-limit=512M` in the `phpstan` composer script to prevent
+  analysis from crashing under the default 128M limit on large codebases.
 - [#36] FutureStringArray: `await()` now copies `char*` elements into owned PHP strings via
   `FFI::string()` before releasing the future's memory. Previously, the method returned raw
   `FFI\CData` pointers that became dangling after `releaseMemory()`, causing use-after-free in
