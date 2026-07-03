@@ -220,9 +220,30 @@ final readonly class AdminClient
             throw new \RuntimeException('Failed to retrieve cluster status');
         }
 
-        /** @var array<string, mixed> $data */
-        $data = json_decode($json, true);
+        return $this->decodeClusterStatusJson($json);
+    }
 
+    /**
+     * Decode and validate cluster status JSON.
+     *
+     * @param string $json Raw JSON string from the cluster status special key
+     *
+     * @return array<string, mixed>
+     *
+     * @throws \JsonException  If the JSON is syntactically invalid
+     * @throws \RuntimeException If the decoded value is not an object (associative array)
+     *
+     * @internal
+     */
+    private function decodeClusterStatusJson(string $json): array
+    {
+        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+
+        if (!is_array($data)) {
+            throw new \RuntimeException('Cluster status response is not a valid JSON object');
+        }
+
+        /** @var array<string, mixed> $data */
         return $data;
     }
 
