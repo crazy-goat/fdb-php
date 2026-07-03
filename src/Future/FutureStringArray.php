@@ -37,9 +37,7 @@ final class FutureStringArray extends Future
         $strings = [];
 
         for ($i = 0; $i < $count; $i++) {
-            /** @var string $str */
-            $str = $outStrings[$i];
-            $strings[] = $str;
+            $strings[] = FFI::string($outStrings[$i]);
         }
 
         $this->cachedResult = $strings;

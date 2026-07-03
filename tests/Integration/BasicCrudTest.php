@@ -151,5 +151,10 @@ final class BasicCrudTest extends TestCase
         $addresses = $tr->getAddressesForKey('test/addresses')->await();
 
         self::assertNotEmpty($addresses);
+        foreach ($addresses as $address) {
+            /** @phpstan-ignore staticMethod.alreadyNarrowedType (runtime guard against CData regression) */
+            self::assertIsString($address);
+            self::assertMatchesRegularExpression('/^.+:\d+$/', $address);
+        }
     }
 }
