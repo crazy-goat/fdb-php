@@ -64,7 +64,7 @@ use CrazyGoat\FoundationDB\RangeOptions;
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 
 $options = new RangeOptions(
-    limit: 100,           // max results (null = unlimited)
+    limit: 100,           // max results (null = unlimited, 0 = empty result)
     reverse: true,        // reverse order
     mode: StreamingMode::WantAll,  // streaming mode
 );

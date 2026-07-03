@@ -146,6 +146,35 @@ final class RangeReadTest extends TestCase
     }
 
     #[Test]
+    public function getRangeWithLimitZeroReturnsEmpty(): void
+    {
+        $this->getDatabase()->set('range_test/a', '1');
+        $this->getDatabase()->set('range_test/b', '2');
+        $this->getDatabase()->set('range_test/c', '3');
+
+        $result = $this->getDatabase()->getRangeStartsWith(
+            'range_test/',
+            new RangeOptions(limit: 0),
+        );
+
+        self::assertCount(0, $result);
+    }
+
+    #[Test]
+    public function getRangeAllWithLimitZeroReturnsEmpty(): void
+    {
+        $this->getDatabase()->set('range_test/a', '1');
+        $this->getDatabase()->set('range_test/b', '2');
+
+        $result = $this->getDatabase()->getRangeAllStartsWith(
+            'range_test/',
+            new RangeOptions(limit: 0),
+        );
+
+        self::assertCount(0, $result);
+    }
+
+    #[Test]
     public function getRangeReturnsRangeResultFromTransaction(): void
     {
         $this->getDatabase()->set('range_test/a', '1');
