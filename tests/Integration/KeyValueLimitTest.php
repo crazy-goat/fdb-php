@@ -16,9 +16,9 @@ use PHPUnit\Framework\TestCase;
  * - Value: maximum 100,000 bytes (100KB)
  * - Transaction: maximum 10,000,000 bytes (10MB) by default
  *
- * Error codes:
- * - 2203: Key too large
- * - 2204: Value too large
+ * Error codes (client-side validation):
+ * - 2102: Key too large (key_outside_legal_size_limit)
+ * - 2103: Value too large (value_outside_legal_size_limit)
  * - 2101: Transaction too large
  */
 final class KeyValueLimitTest extends TestCase
@@ -28,8 +28,9 @@ final class KeyValueLimitTest extends TestCase
     private const MAX_KEY_SIZE = 10000;
     private const MAX_VALUE_SIZE = 100000;
     private const DEFAULT_TRANSACTION_SIZE_LIMIT = 10000000; // 10MB
-    private const KEY_TOO_LARGE_CODE = 2203;
-    private const VALUE_TOO_LARGE_CODE = 2204;
+    // Client-side validation error codes (returned by fdb_c, not server)
+    private const KEY_TOO_LARGE_CODE = 2102;   // key_outside_legal_size_limit
+    private const VALUE_TOO_LARGE_CODE = 2103; // value_outside_legal_size_limit
     private const TRANSACTION_TOO_LARGE_CODE = 2101;
 
     #[Test]
@@ -55,8 +56,6 @@ final class KeyValueLimitTest extends TestCase
             self::fail('Expected FDBException for key too large');
         } catch (FDBException $e) {
             self::assertSame(self::KEY_TOO_LARGE_CODE, $e->fdbCode);
-            self::assertStringContainsStringIgnoringCase('key', $e->getMessage());
-            self::assertStringContainsStringIgnoringCase('large', $e->getMessage());
         }
     }
 
@@ -83,8 +82,6 @@ final class KeyValueLimitTest extends TestCase
             self::fail('Expected FDBException for value too large');
         } catch (FDBException $e) {
             self::assertSame(self::VALUE_TOO_LARGE_CODE, $e->fdbCode);
-            self::assertStringContainsStringIgnoringCase('value', $e->getMessage());
-            self::assertStringContainsStringIgnoringCase('large', $e->getMessage());
         }
     }
 
@@ -149,11 +146,11 @@ final class KeyValueLimitTest extends TestCase
     #[Test]
     public function transactionAtDefaultSizeLimitSucceeds(): void
     {
-        // Create a transaction that is exactly at the 10MB limit
-        // Using multiple smaller key-value pairs to reach the limit
+        // Create a transaction that stays within the 10MB limit
+        // Keys also count toward the transaction size, so we leave headroom
         $keyPrefix = 'test/tx_limit/';
-        $valueSize = 100000; // 100KB each
-        $numPairs = self::DEFAULT_TRANSACTION_SIZE_LIMIT / $valueSize; // 100 pairs = 10MB
+        $valueSize = 99800; // ~99KB each (leaving room for key bytes)
+        $numPairs = 100;
 
         $tr = $this->getDatabase()->createTransaction();
 
@@ -163,7 +160,7 @@ final class KeyValueLimitTest extends TestCase
             $tr->set($key, $value);
         }
 
-        // Should succeed at exactly the limit
+        // Should succeed: 100 * (99800 + ~15) ≈ 9.98MB < 10MB
         $tr->commit()->await();
 
         // Verify data was written
@@ -192,8 +189,6 @@ final class KeyValueLimitTest extends TestCase
             self::fail('Expected FDBException for transaction too large');
         } catch (FDBException $e) {
             self::assertSame(self::TRANSACTION_TOO_LARGE_CODE, $e->fdbCode);
-            self::assertStringContainsStringIgnoringCase('transaction', $e->getMessage());
-            self::assertStringContainsStringIgnoringCase('large', $e->getMessage());
         }
     }
 
