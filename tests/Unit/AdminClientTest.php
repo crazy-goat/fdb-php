@@ -14,8 +14,6 @@ final class AdminClientTest extends TestCase
      * Call private AdminClient::decodeClusterStatusJson via reflection.
      *
      * @param string $json Raw JSON string
-     *
-     * @return mixed
      */
     private function decodeClusterStatusJson(string $json): mixed
     {
