@@ -33,6 +33,11 @@ final readonly class RangeResult implements \IteratorAggregate
         $iteration = 1;
         $fetched = 0;
 
+        // A limit of 0 means "no rows" — return immediately.
+        if ($limit === 0) {
+            return;
+        }
+
         while (true) {
             $currentLimit = $limit !== null ? $limit - $fetched : 0;
 
