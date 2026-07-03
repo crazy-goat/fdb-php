@@ -122,7 +122,7 @@ final class Tuple
         $packed1 = self::pack($tuple1);
         $packed2 = self::pack($tuple2);
 
-        return $packed1 <=> $packed2;
+        return strcmp($packed1, $packed2) <=> 0;
     }
 
     /**

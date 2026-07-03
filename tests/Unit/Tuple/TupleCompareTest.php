@@ -300,6 +300,28 @@ final class TupleCompareTest extends TestCase
     }
 
     #[Test]
+    public function compareNumericLookingStrings(): void
+    {
+        // Packed bytes that look like numeric strings must NOT be coerced by PHP's <=>
+        // strcmp() compares byte-by-byte, preserving correct ordering.
+        // These bytes happen to form numeric-like strings when interpreted as ASCII.
+        $a = "\x31\x32\x33"; // "123"
+        $b = "\x32\x31\x30"; // "210"
+
+        // Pack them as Bytes to preserve raw bytes, then compare
+        $result = Tuple::compare([new Bytes($a)], [new Bytes($b)]);
+        self::assertSame(-1, $result);
+
+        // Also test strings that might look numeric
+        $result2 = Tuple::compare(["123"], ["210"]);
+        self::assertSame(-1, $result2);
+
+        // Test equality for same numeric-looking string
+        $result3 = Tuple::compare(["123"], ["123"]);
+        self::assertSame(0, $result3);
+    }
+
+    #[Test]
     public function compareMatchesPackedByteOrdering(): void
     {
         $pairs = [
