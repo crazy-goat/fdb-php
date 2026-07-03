@@ -212,7 +212,7 @@ final class Tuple
     private static function encodePositiveInt(int $value): string
     {
         $byteCount = self::bytesNeeded($value);
-        $code = chr(self::TYPE_INT_ZERO + $byteCount);
+        $code = chr((self::TYPE_INT_ZERO + $byteCount) & 0xFF);
         $bytes = '';
 
         for ($i = $byteCount - 1; $i >= 0; $i--) {
@@ -241,7 +241,7 @@ final class Tuple
             return self::encodeNegativeGmp(gmp_init($value));
         }
 
-        $code = chr(self::TYPE_INT_ZERO - $byteCount);
+        $code = chr((self::TYPE_INT_ZERO - $byteCount) & 0xFF);
         $maxVal = self::maxValueForBytes($byteCount);
         $adjusted = $maxVal + $value;
         $bytes = '';
@@ -310,7 +310,7 @@ final class Tuple
         $invertedLength = chr(255 - $byteCount);
         $adjustedBytes = '';
         for ($i = 0; $i < $byteCount; $i++) {
-            $adjustedBytes .= chr(ord($bytes[$i]) ^ 0xFF);
+            $adjustedBytes .= chr((ord($bytes[$i]) ^ 0xFF) & 0xFF);
         }
 
         return chr(self::TYPE_NEG_BIGINT) . $invertedLength . $adjustedBytes;
@@ -756,7 +756,7 @@ final class Tuple
 
         $bytes = '';
         for ($i = 0; $i < strlen($hex); $i += 2) {
-            $bytes .= chr((int) hexdec(substr($hex, $i, 2)));
+            $bytes .= chr(((int) hexdec(substr($hex, $i, 2))) & 0xFF);
         }
 
         return $bytes;
