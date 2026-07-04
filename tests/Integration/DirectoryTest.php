@@ -236,8 +236,8 @@ final class DirectoryTest extends TestCase
 
         $this->expectException(DirectoryException::class);
         $this->expectExceptionMessageMatches(
-            '`/destination path app/move_cycle_b/inner/deep '
-            . "is inside the source path's subtree app/move_cycle_b/inner/`",
+            '~destination path app/move_cycle_b/inner/deep '
+            . "is inside the source path's subtree app/move_cycle_b/inner~",
         );
 
         $this->dir->move(

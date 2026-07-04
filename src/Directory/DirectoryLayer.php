@@ -146,9 +146,14 @@ final readonly class DirectoryLayer
      *  - `oldPath` !== `newPath` — a "move" to the same path is rejected
      *    explicitly to avoid a no-op that still rewrites index entries
      *    and confuses readers.
-     *  - source and destination live in the same partition layer —
-     *    crossing a partition boundary is rejected so application data
-     *    cannot silently land in a sibling partition's prefix space.
+     *  - the immediate parents of `oldPath` and `newPath` carry the same
+     *    partition layer — moving a directory between two different
+     *    partition boundaries (or between partition and top-level) is
+     *    rejected so application data cannot silently land in a sibling
+     *    partition's prefix space. The check is on the *parents*, not on
+     *    `oldPath`'s own `layer` attribute, because a child born inside a
+     *    partition carries its parent's partition forward regardless of
+     *    its own layer string.
      *  - source exists (already enforced; surfaced with the source-
      *    not-found exception).
      *  - destination does not exist (already enforced; surfaced with the
@@ -164,8 +169,9 @@ final readonly class DirectoryLayer
      * @param list<string> $newPath Destination directory path (must not
      *                               exist; must not be empty; must not be
      *                               inside `oldPath`'s subtree; must not
-     *                               equal `oldPath`; must live in the same
-     *                               partition layer as `oldPath`).
+     *                               equal `oldPath`; must share the same
+     *                               immediate-parent partition layer as
+     *                               `oldPath`).
      *
      * @return DirectorySubspace The directory subspace at `$newPath`,
      *                            re-bound to the source's prefix.
@@ -216,33 +222,45 @@ final readonly class DirectoryLayer
                 throw new DirectoryException('Parent of destination directory does not exist.');
             }
 
-            // Crossing a partition boundary is rejected: a partition's
-            // parent (or child) must not be silently re-parented under a
-            // different layer. Pull the layer of the source into the
-            // closure so it can participate in the comparison; reading it
-            // here is bounded by the existing find() above which already
-            // ran against the live subdirs index.
-            $oldLayer = $this->getNodeLayer($tr, $oldNode);
-            $newParentLayer = $newParentPath !== []
-                ? $this->getNodeLayer($tr, $newParentNode)
-                : '';
-
-            $this->assertSamePartitionLayer($oldLayer, $newParentLayer, $oldPath, $newPath);
-
-            $lastName = $newPath[count($newPath) - 1];
-            $subdirsNode = $newParentNode->subspace(self::SUBDIRS);
-            $tr->set($subdirsNode->pack([$lastName]), $oldPrefix);
-
+            // Crossing a partition boundary is rejected: a directory
+            // that lives under a partition node must not be silently
+            // re-parented under a different parent (partition vs.
+            // top-level, or partition-A vs. partition-B). The canonical
+            // check is on the immediate parents' layers: the
+            // partition-identity of `oldPath` is determined by its
+            // immediate parent's layer, and similarly for `newPath` —
+            // the source's *own* layer attribute does not identify its
+            // partition membership on its own. The partition-identity
+            // of the source IS encoded in the parent though (a child
+            // born inside a partition carries the parent's partition
+            // forward), so comparing the two immediate-parent layers
+            // captures every shape the canonical FDB directory layer
+            // refuses.
             $oldParentPath = array_slice($oldPath, 0, -1);
             $oldParentNode = $oldParentPath !== []
                 ? $this->find($tr, $oldParentPath)
                 : $this->rootNode;
 
-            if ($oldParentNode instanceof \CrazyGoat\FoundationDB\Subspace) {
-                $oldLastName = $oldPath[count($oldPath) - 1];
-                $oldSubdirsNode = $oldParentNode->subspace(self::SUBDIRS);
-                $tr->clear($oldSubdirsNode->pack([$oldLastName]));
+            if (!$oldParentNode instanceof \CrazyGoat\FoundationDB\Subspace) {
+                // Old parent is missing — surface the standard
+                // "source-not-found" exception rather than a
+                // partition-crossing one.
+                throw new DirectoryException('Source directory does not exist.');
             }
+
+            $oldLayer = $this->getNodeLayer($tr, $oldNode);
+            $oldParentLayer = $this->getNodeLayer($tr, $oldParentNode);
+            $newParentLayer = $this->getNodeLayer($tr, $newParentNode);
+
+            $this->assertSamePartitionLayer($oldParentLayer, $newParentLayer, $oldPath, $newPath);
+
+            $lastName = $newPath[count($newPath) - 1];
+            $subdirsNode = $newParentNode->subspace(self::SUBDIRS);
+            $tr->set($subdirsNode->pack([$lastName]), $oldPrefix);
+
+            $oldLastName = $oldPath[count($oldPath) - 1];
+            $oldSubdirsNode = $oldParentNode->subspace(self::SUBDIRS);
+            $tr->clear($oldSubdirsNode->pack([$oldLastName]));
 
             return $this->contentsOfNode(
                 $this->nodeWithPrefix($oldPrefix),
@@ -744,15 +762,25 @@ final readonly class DirectoryLayer
 
     /**
      * Reject moves that cross a partition boundary. The canonical FDB
-     * directory layer does not allow one side of a move to live in a
-     * partition-layer node and the other in a non-partition parent (or
-     * vice-versa); allowing it would re-bind a prefix into a different
-     * partition's content space.
+     * directory layer does not allow a directory to be re-parented
+     * from inside one partition (or outside any partition) into a
+     * different partition or the top level; allowing it would re-bind
+     * a prefix into a different partition's content space at the FDB
+     * layer.
      *
-     * Both sides must either both be at the top-level (no partition
-     * anywhere in the chain) or live within the same partition. The
-     * guard accepts the empty-string sentinel (top-level) as a valid
-     * counterpart of itself.
+     * The check is performed on the **immediate parents'** layers of
+     * `oldPath` and `newPath`, because a directory's own `layer`
+     * attribute does not identify its partition membership on its own
+     * — a child born inside a partition carries the parent's partition
+     * forward even though its own layer string is `""`. Comparing the
+     * two immediate parents covers every shape the canonical Java
+     * directory layer refuses (top-level → top-level, partition-A →
+     * partition-A, partition → top, top → partition,
+     * partition-A → partition-B).
+     *
+     * Both sides must either both carry the empty-string layer
+     * (top-level) or both carry the same explicit layer string. The
+     * empty-string sentinel matches itself as a valid counterpart.
      *
      * @param list<string> $oldPath
      * @param list<string> $newPath
@@ -760,22 +788,22 @@ final readonly class DirectoryLayer
      * @throws DirectoryException If the move crosses a partition boundary.
      */
     private function assertSamePartitionLayer(
-        string $oldLayer,
+        string $oldParentLayer,
         string $newParentLayer,
         array $oldPath,
         array $newPath,
     ): void {
         // Both legs are top-level (non-partition), or both carry the same
         // explicit layer string — either layout is fine.
-        if ($oldLayer === $newParentLayer) {
+        if ($oldParentLayer === $newParentLayer) {
             return;
         }
 
         throw new DirectoryException(sprintf(
-            'move: cannot move directory %s (layer "%s") into path %s '
-            . 'whose parent has layer "%s" (partition crossings are disallowed).',
+            'move: cannot move directory %s (parent layer "%s") into path %s '
+            . 'whose parent layer is "%s" (partition crossings are disallowed).',
             $this->printablePath($oldPath),
-            $oldLayer,
+            $oldParentLayer,
             $this->printablePath($newPath),
             $newParentLayer,
         ));

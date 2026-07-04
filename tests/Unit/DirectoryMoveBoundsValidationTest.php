@@ -308,37 +308,42 @@ final class DirectoryMoveBoundsValidationTest extends TestCase
     }
 
     #[Test]
-    public function assertSamePartitionLayerRejectsPartitionToNonPartition(): void
+    public function assertSamePartitionLayerRejectsMismatchWithPartitionLayerOnEitherSide(): void
     {
         $this->expectException(\CrazyGoat\FoundationDB\Directory\DirectoryException::class);
-        $this->expectExceptionMessageMatches('/layer "partition".+layer ""/');
+        // The message renders the source side as `(parent layer "X")`
+        // and the destination side as `whose parent layer is "X"`.
+        $this->expectExceptionMessageMatches(
+            '/\(parent layer "partition"\).+whose parent layer is ""/',
+        );
 
         $this->assertSamePartitionLayer('partition', '', ['a'], ['b']);
     }
 
     #[Test]
-    public function assertSamePartitionLayerRejectsNonPartitionToPartition(): void
+    public function assertSamePartitionLayerRejectsReverseMismatchToPartition(): void
     {
         $this->expectException(\CrazyGoat\FoundationDB\Directory\DirectoryException::class);
-        $this->expectExceptionMessageMatches('/layer "".+layer "partition"/');
+        $this->expectExceptionMessageMatches(
+            '/\(parent layer ""\).+whose parent layer is "partition"/',
+        );
 
         $this->assertSamePartitionLayer('', 'partition', ['a', 'b'], ['p', 'x']);
     }
 
     #[Test]
-    public function assertSamePartitionLayerDistinguishesCustomPartitionLikeLayers(): void
+    public function assertSamePartitionLayerDistinguishesCustomLayers(): void
     {
-        // Two distinct custom layers that are not equal cannot be moved
-        // across each other either — explicit, not a partition-magic check.
         $this->expectException(\CrazyGoat\FoundationDB\Directory\DirectoryException::class);
-        $this->expectExceptionMessage('layer "alpha"');
-        $this->expectExceptionMessage('layer "beta"');
+        $this->expectExceptionMessageMatches(
+            '/\(parent layer "alpha"\).+whose parent layer is "beta"/',
+        );
 
         $this->assertSamePartitionLayer('alpha', 'beta', ['app', 'a'], ['app', 'b']);
     }
 
     #[Test]
-    public function assertSamePartitionLayerErrorRendersPathsSafely(): void
+    public function assertSamePartitionLayerErrorRendersPathsAndLayersSafely(): void
     {
         try {
             $this->assertSamePartitionLayer(
@@ -351,6 +356,11 @@ final class DirectoryMoveBoundsValidationTest extends TestCase
         } catch (\CrazyGoat\FoundationDB\Directory\DirectoryException $e) {
             self::assertStringContainsString('weird\\x01\\x2Fseg', $e->getMessage());
             self::assertStringContainsString('plain/dest', $e->getMessage());
+            // Both forms of the parent-layer label must appear in the
+            // rendering — the source side in parentheses and the
+            // destination side as "whose parent layer is".
+            self::assertStringContainsString('(parent layer "partition")', $e->getMessage());
+            self::assertStringContainsString('whose parent layer is ""', $e->getMessage());
         }
     }
 }

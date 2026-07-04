@@ -104,7 +104,7 @@ silently writing a broken mapping into the subdirs index:
 | `newPath` equals `oldPath`                                             | a "move to the same path" is a no-op that still rewrites index entries          |
 | `newPath` begins with `oldPath` as a prefix                            | moving a directory under its own subtree creates a cycle in the directory index and leaves an unreachable sub-tree |
 | `oldPath` or `newPath` exceeds `MAX_MOVE_PATH_DEPTH` (64 segments)      | malformed input cannot produce arbitrarily-deep directory entries silently      |
-| source and destination live in different partition layers              | a partition-node directory must not be silently re-parented into a non-partition parent (and vice-versa), since that would re-bind a prefix into a different partition's content space |
+| the immediate parents of `oldPath` and `newPath` carry different partition layers | a directory must not be silently re-parented out of or into a different partition; the check is on the *parents*, not on `oldPath`'s own `layer` attribute, because a child borrows its parent's partition membership regardless of its own layer string |
 | `oldPath` does not exist                                               | surfaced with `Source directory does not exist`                                 |
 | `newPath` already exists                                               | surfaced with `Destination directory already exists`                           |
 | `newParent` does not exist                                             | surfaced with `Parent of destination directory does not exist`                 |

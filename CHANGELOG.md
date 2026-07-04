@@ -41,7 +41,7 @@
   | `newPath` equals `oldPath`                                                                                                | `DirectoryException`: source and destination paths are identical (avoids a no-op that still rewrites the subdirs index) |
   | `newPath` begins with `oldPath` as a prefix (`array_slice($newPath, 0, count($oldPath)) === $oldPath`)                   | `DirectoryException`: destination is inside the source's subtree (would create a cycle / unreachable sub-tree) |
   | `count($oldPath) > 64` or `count($newPath) > 64` (`MAX_MOVE_PATH_DEPTH`)                                                  | `DirectoryException`: path exceeds maximum depth (bounds defence against malformed inputs producing arbitrarily deep entries) |
-  | `oldNode` and `newParent` carry different partition layers                                                                | `DirectoryException`: `partition crossings are disallowed` (a partition-node directory must not be silently re-parented under a non-partition parent or vice-versa) |
+  | the immediate parents of `oldPath` and `newPath` carry different partition layers                                                              | `DirectoryException`: `partition crossings are disallowed` (a directory must not be silently re-parented out of or into a different partition; the check is on the parents, not on `oldPath`'s own `layer` attribute, because a child borrows its parent's partition membership regardless of its own layer string) |
 
   Previously, `move(['a'], ['a','b'])` succeeded silently and produced a
   cycle in the subdirs index; `move(['p','a'], ['x','a'])` silently
