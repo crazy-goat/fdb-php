@@ -57,15 +57,18 @@ final class TupleNestingDepthTest extends TestCase
     }
 
     #[Test]
-    public function readsPoCMaliciousBufferViaClusterWithoutCrashing(): void
+    public function readsOversizedNestedBufferViaClusterWithoutCrashing(): void
     {
-        // The original PoC from issue #39: hundreds of kilobytes of
-        // TYPE_NESTED bytes would drive the call stack until the
-        // process aborted. The fix must reject the same buffer
-        // deterministically when the application tries to read it
-        // back from a live cluster, in well under a second.
-        $key = 'tuple_nesting/poc';
-        $payload = str_repeat("\x05", 300_000);
+        // A nested payload whose recursion would exceed
+        // `MAX_NESTING_DEPTH` is rejected by `Tuple::unpack()` on
+        // read. The original issue's 300 KB PoC also overflows the
+        // server-side 100 KB value limit, so this E2E test uses a
+        // smaller payload (a few hundred `\x05` bytes — still well
+        // above the `MAX_NESTING_DEPTH = 100` guard) so the test
+        // stays within the FDB-side size limit while still proving
+        // the PHP-side guard fires on read against a live cluster.
+        $key = 'tuple_nesting/oversized';
+        $payload = str_repeat("\x05", 500);
         $this->getDatabase()->set($key, $payload);
 
         $raw = (string) $this->getDatabase()->get($key);
