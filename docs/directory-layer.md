@@ -93,6 +93,29 @@ $dir->move($db, ['app', 'users'], ['app', 'customers']);
 // Data is NOT moved — only the directory mapping changes (O(1) operation)
 ```
 
+`move()` enforces a small explicit contract at the PHP trust boundary
+and throws `DirectoryException` on every violation, instead of
+silently writing a broken mapping into the subdirs index:
+
+| Violation                                                              | Why it's rejected                                                              |
+|------------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| `newPath` is empty                                                     | a directory path must contain at least one segment                              |
+| `oldPath` is empty                                                     | a directory path must contain at least one segment                              |
+| `newPath` equals `oldPath`                                             | a "move to the same path" is a no-op that still rewrites index entries          |
+| `newPath` begins with `oldPath` as a prefix                            | moving a directory under its own subtree creates a cycle in the directory index and leaves an unreachable sub-tree |
+| `oldPath` or `newPath` exceeds `MAX_MOVE_PATH_DEPTH` (64 segments)      | malformed input cannot produce arbitrarily-deep directory entries silently      |
+| source and destination live in different partition layers              | a partition-node directory must not be silently re-parented into a non-partition parent (and vice-versa), since that would re-bind a prefix into a different partition's content space |
+| `oldPath` does not exist                                               | surfaced with `Source directory does not exist`                                 |
+| `newPath` already exists                                               | surfaced with `Destination directory already exists`                           |
+| `newParent` does not exist                                             | surfaced with `Parent of destination directory does not exist`                 |
+
+All checks run **before any write**, so a rejected `move()` does not
+leave partial state and the same `oldPath` can be re-tried with a
+different `newPath`. Path segments in the exception message are
+rendered with control bytes, DEL and high bytes escaped as `\xHH`
+(plus `/` escaped inside segments), so log lines never include raw
+non-printable bytes from caller-supplied input.
+
 ## Removing Directories
 
 ```php

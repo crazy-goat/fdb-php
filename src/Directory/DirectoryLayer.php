@@ -16,6 +16,20 @@ final readonly class DirectoryLayer
     private const LAYER_SUFFIX = 'layer';
     private const PARTITION_LAYER = 'partition';
 
+    /**
+     * Maximum depth (segment count) accepted for an `oldPath` or
+     * `newPath` argument to {@see self::move()}.
+     *
+     * The FDB key-size limit (10,000 bytes) is the absolute outer bound;
+     * 64 segment slots leaves generous headroom for any realistic
+     * organisational layout. A bound here means a malformed caller input
+     * cannot produce a directory entry whose path component-count
+     * eventually exhausts prefix space silently on a hot path, and it
+     * gives the assertion in {@see self::validateMoveBounds()} a
+     * concrete, documented number rather than a magic one.
+     */
+    private const MAX_MOVE_PATH_DEPTH = 64;
+
     private Subspace $rootNode;
 
     private HighContentionAllocator $allocator;
@@ -114,13 +128,59 @@ final readonly class DirectoryLayer
     }
 
     /**
-     * @param list<string> $oldPath
-     * @param list<string> $newPath
+     * Move a directory and all of its contents (subdirectories and content)
+     * from one path to another within the same `DirectoryLayer`.
+     *
+     * ## Input validation contract (fix for #40)
+     *
+     * `move()` enforces the canonical FoundationDB directory-layer move
+     * rules at the PHP trust boundary and throws
+     * `CrazyGoat\FoundationDB\Directory\DirectoryException` on any
+     * violation, instead of silently writing the move into the subdirs
+     * index and producing an inconsistent / cyclic subtree:
+     *
+     *  - `newPath` does not begin with `oldPath` as a prefix — otherwise
+     *    `newPath` is a descendant of `oldPath`, so moving `oldPath`
+     *    under itself creates a cycle in the directory index and leaves
+     *    an unreachable subtree.
+     *  - `oldPath` !== `newPath` — a "move" to the same path is rejected
+     *    explicitly to avoid a no-op that still rewrites index entries
+     *    and confuses readers.
+     *  - source and destination live in the same partition layer —
+     *    crossing a partition boundary is rejected so application data
+     *    cannot silently land in a sibling partition's prefix space.
+     *  - source exists (already enforced; surfaced with the source-
+     *    not-found exception).
+     *  - destination does not exist (already enforced; surfaced with the
+     *    destination-exists exception).
+     *  - destination parent exists (already enforced; surfaced with the
+     *    parent-not-found exception).
+     *
+     * Successful moves return the `DirectorySubspace` resolved at
+     * `newPath` (with the original prefix of `oldPath` re-bound).
+     *
+     * @param list<string> $oldPath Source directory path (must exist, must
+     *                               not be empty).
+     * @param list<string> $newPath Destination directory path (must not
+     *                               exist; must not be empty; must not be
+     *                               inside `oldPath`'s subtree; must not
+     *                               equal `oldPath`; must live in the same
+     *                               partition layer as `oldPath`).
+     *
+     * @return DirectorySubspace The directory subspace at `$newPath`,
+     *                            re-bound to the source's prefix.
+     *
+     * @throws DirectoryException If `oldPath` does not exist, if
+     *                            `newPath` already exists, if the new
+     *                            parent does not exist, or if any of the
+     *                            input-validation contract rules above is
+     *                            violated.
      */
     public function move(Transactor $dbOrTr, array $oldPath, array $newPath): DirectorySubspace
     {
         $this->validatePath($oldPath);
         $this->validatePath($newPath);
+        $this->validateMoveBounds($oldPath, $newPath);
 
         return $this->runInTransaction($dbOrTr, function (Transaction $tr) use ($oldPath, $newPath): DirectorySubspace {
             $this->checkVersion($tr);
@@ -156,6 +216,19 @@ final readonly class DirectoryLayer
                 throw new DirectoryException('Parent of destination directory does not exist.');
             }
 
+            // Crossing a partition boundary is rejected: a partition's
+            // parent (or child) must not be silently re-parented under a
+            // different layer. Pull the layer of the source into the
+            // closure so it can participate in the comparison; reading it
+            // here is bounded by the existing find() above which already
+            // ran against the live subdirs index.
+            $oldLayer = $this->getNodeLayer($tr, $oldNode);
+            $newParentLayer = $newParentPath !== []
+                ? $this->getNodeLayer($tr, $newParentNode)
+                : '';
+
+            $this->assertSamePartitionLayer($oldLayer, $newParentLayer, $oldPath, $newPath);
+
             $lastName = $newPath[count($newPath) - 1];
             $subdirsNode = $newParentNode->subspace(self::SUBDIRS);
             $tr->set($subdirsNode->pack([$lastName]), $oldPrefix);
@@ -171,12 +244,10 @@ final readonly class DirectoryLayer
                 $tr->clear($oldSubdirsNode->pack([$oldLastName]));
             }
 
-            $layer = $this->getNodeLayer($tr, $oldNode);
-
             return $this->contentsOfNode(
                 $this->nodeWithPrefix($oldPrefix),
                 $newPath,
-                $layer,
+                $oldLayer,
             );
         });
     }
@@ -603,6 +674,153 @@ final readonly class DirectoryLayer
         if ($path === []) {
             throw new DirectoryException('Path must not be empty.');
         }
+    }
+
+    /**
+     * Enforce the path-level move constraints that do not require a
+     * transaction (no FDB lookup, no transaction-bound `Transaction`):
+     *
+     *  - `newPath` must not begin with `oldPath` as a prefix
+     *    ("a/b" → "a/b/c" rejected, "a/b" → "a" rejected because
+     *     `array_slice($newPath, 0, count($oldPath)) === $oldPath`);
+     *  - `oldPath` and `newPath` must not be identical
+     *    (a "move to the same path" is a silent no-op);
+     *  - the two paths must stay within the same depth bound
+     *    (`MAX_MOVE_PATH_DEPTH`) so the resulting directory tree cannot
+     *    be made arbitrarily deep by repeated moves that escape existing
+     *    bounds.
+     *
+     * These three rules together reject every shape that the canonical
+     * FoundationDB directory layer refuses and surface each as
+     * `DirectoryException` with a printable rendering of both paths so
+     * the call site can be identified from the message.
+     *
+     * @param list<string> $oldPath
+     * @param list<string> $newPath
+     *
+     * @throws DirectoryException If `newPath` is inside `oldPath`'s
+     *                            subtree, if the two paths are equal, or
+     *                            if either exceeds `MAX_MOVE_PATH_DEPTH`.
+     */
+    private function validateMoveBounds(array $oldPath, array $newPath): void
+    {
+        if ($oldPath === $newPath) {
+            throw new DirectoryException(sprintf(
+                'move: source and destination paths are identical (%s).',
+                $this->printablePath($oldPath),
+            ));
+        }
+
+        if (count($oldPath) > self::MAX_MOVE_PATH_DEPTH) {
+            throw new DirectoryException(sprintf(
+                'move: source path exceeds maximum depth %d (got %d): %s',
+                self::MAX_MOVE_PATH_DEPTH,
+                count($oldPath),
+                $this->printablePath($oldPath),
+            ));
+        }
+
+        if (count($newPath) > self::MAX_MOVE_PATH_DEPTH) {
+            throw new DirectoryException(sprintf(
+                'move: destination path exceeds maximum depth %d (got %d): %s',
+                self::MAX_MOVE_PATH_DEPTH,
+                count($newPath),
+                $this->printablePath($newPath),
+            ));
+        }
+
+        $sameLengthOrLonger = count($newPath) >= count($oldPath);
+        $newPathPrefixOfOld = $sameLengthOrLonger
+            && array_slice($newPath, 0, count($oldPath)) === $oldPath;
+        if ($newPathPrefixOfOld) {
+            throw new DirectoryException(sprintf(
+                'move: destination path %s is inside the source path\'s subtree %s '
+                . '(would create a cycle in the directory index).',
+                $this->printablePath($newPath),
+                $this->printablePath($oldPath),
+            ));
+        }
+    }
+
+    /**
+     * Reject moves that cross a partition boundary. The canonical FDB
+     * directory layer does not allow one side of a move to live in a
+     * partition-layer node and the other in a non-partition parent (or
+     * vice-versa); allowing it would re-bind a prefix into a different
+     * partition's content space.
+     *
+     * Both sides must either both be at the top-level (no partition
+     * anywhere in the chain) or live within the same partition. The
+     * guard accepts the empty-string sentinel (top-level) as a valid
+     * counterpart of itself.
+     *
+     * @param list<string> $oldPath
+     * @param list<string> $newPath
+     *
+     * @throws DirectoryException If the move crosses a partition boundary.
+     */
+    private function assertSamePartitionLayer(
+        string $oldLayer,
+        string $newParentLayer,
+        array $oldPath,
+        array $newPath,
+    ): void {
+        // Both legs are top-level (non-partition), or both carry the same
+        // explicit layer string — either layout is fine.
+        if ($oldLayer === $newParentLayer) {
+            return;
+        }
+
+        throw new DirectoryException(sprintf(
+            'move: cannot move directory %s (layer "%s") into path %s '
+            . 'whose parent has layer "%s" (partition crossings are disallowed).',
+            $this->printablePath($oldPath),
+            $oldLayer,
+            $this->printablePath($newPath),
+            $newParentLayer,
+        ));
+    }
+
+    /**
+     * Render a path safely for inclusion in an exception message. Each
+     * segment is rendered via {@see self::printableSegment()} so control
+     * bytes, DEL, and high bytes are escaped as `\xHH`. The segments are
+     * joined with `"/"` to mirror the convention already used by the
+     * AdminClient validator.
+     *
+     * @param list<string> $path
+     */
+    private function printablePath(array $path): string
+    {
+        $rendered = [];
+        foreach ($path as $segment) {
+            $rendered[] = $this->printableSegment($segment);
+        }
+
+        return implode('/', $rendered);
+    }
+
+    /**
+     * Render a single path segment for an exception message. Bytes
+     * below 0x20, DEL (0x7F), and high bytes (0x80–0xFF) are rendered as
+     * `\xHH`; printable bytes (0x20–0x7E) are kept as-is. `/` is also
+     * escaped because paths are joined with `"/"` and a literal slash
+     * in a segment would be ambiguous in the rendered output.
+     */
+    private function printableSegment(string $value): string
+    {
+        $out = '';
+        $length = strlen($value);
+        for ($i = 0; $i < $length; $i++) {
+            $byte = ord($value[$i]);
+            if ($byte < 0x20 || $byte === 0x7F || $byte >= 0x80 || $byte === 0x2F) {
+                $out .= sprintf('\\x%02X', $byte);
+            } else {
+                $out .= $value[$i];
+            }
+        }
+
+        return $out;
     }
 
     /**

@@ -201,6 +201,244 @@ final class DirectoryTest extends TestCase
         $this->dir->move($this->getDatabase(), ['app', 'move_a'], ['app', 'move_b']);
     }
 
+    // --- issue #40: move() must bound path inputs and reject cycle/partition --
+
+    /**
+     * `move(['a'], ['a','b'])` would silently produce a cycle in the
+     * subdirs index. The fix throws `DirectoryException` at the call
+     * site instead.
+     */
+    #[Test]
+    public function moveIntoOwnImmediateSubdirectoryThrows(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'move_cycle_a']);
+
+        $this->expectException(DirectoryException::class);
+        $this->expectExceptionMessageMatches(
+            "/destination path app\\/move_cycle_a\\/child is inside the source path's subtree app\\/move_cycle_a/",
+        );
+
+        $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'move_cycle_a'],
+            ['app', 'move_cycle_a', 'child'],
+        );
+    }
+
+    /**
+     * `move(['a','b'], ['a','b','c'])` is the deeper-subtree variant of
+     * the same cycle-creation bug and must likewise throw.
+     */
+    #[Test]
+    public function moveIntoOwnDeeperSubdirectoryThrows(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'move_cycle_b', 'inner']);
+
+        $this->expectException(DirectoryException::class);
+        $this->expectExceptionMessageMatches(
+            '`/destination path app/move_cycle_b/inner/deep '
+            . "is inside the source path's subtree app/move_cycle_b/inner/`",
+        );
+
+        $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'move_cycle_b', 'inner'],
+            ['app', 'move_cycle_b', 'inner', 'deep'],
+        );
+    }
+
+    /**
+     * A "move" to the same path is rejected explicitly so the subdirs
+     * index is not rewritten for a no-op that would surprise readers.
+     */
+    #[Test]
+    public function moveToIdenticalPathThrows(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'move_same']);
+
+        $this->expectException(DirectoryException::class);
+        $this->expectExceptionMessage('source and destination paths are identical (app/move_same)');
+
+        $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'move_same'],
+            ['app', 'move_same'],
+        );
+    }
+
+    /**
+     * After a rejected self-subtree move, neither the source nor any
+     * candidate child under the source should exist; the failed
+     * transaction must leave the directory index untouched.
+     */
+    #[Test]
+    public function moveIntoOwnSubtreeLeavesDirectoryIndexUntouched(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'move_cycle_clean', 'pre_existing_child']);
+
+        // Pre-existing child must still exist — the move rejection must
+        // not have cleared or rewritten the index.
+        self::assertTrue($this->dir->exists(
+            $this->getDatabase(),
+            ['app', 'move_cycle_clean', 'pre_existing_child'],
+        ));
+
+        try {
+            $this->dir->move(
+                $this->getDatabase(),
+                ['app', 'move_cycle_clean'],
+                ['app', 'move_cycle_clean', 'rejected_child'],
+            );
+            self::fail('Expected DirectoryException was not thrown.');
+        } catch (DirectoryException $e) {
+            self::assertStringContainsString("inside the source path's subtree", $e->getMessage());
+        }
+
+        // After the rejection: source still exists, candidate child is
+        // NOT created (i.e. the move did not silently land).
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'move_cycle_clean']));
+        self::assertFalse($this->dir->exists(
+            $this->getDatabase(),
+            ['app', 'move_cycle_clean', 'rejected_child'],
+        ));
+        // And the pre-existing child is still readable.
+        self::assertTrue($this->dir->exists(
+            $this->getDatabase(),
+            ['app', 'move_cycle_clean', 'pre_existing_child'],
+        ));
+    }
+
+    /**
+     * A valid sibling rename still works — the bounds checks must not
+     * regress the happy path. This guards against an over-eager guard
+     * accidentally rejecting a perfectly ordinary move.
+     */
+    #[Test]
+    public function moveToSiblingStillSucceeds(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'move_ok_src']);
+
+        $moved = $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'move_ok_src'],
+            ['app', 'move_ok_dst'],
+        );
+
+        self::assertSame(['app', 'move_ok_dst'], $moved->getPath());
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'move_ok_src']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'move_ok_dst']));
+    }
+
+    /**
+     * A non-cycle rename into a different parent (one level deeper, with
+     * a parent that already exists) still works.
+     */
+    #[Test]
+    public function moveIntoExistingParentStillSucceeds(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'move_parent']);
+        $this->dir->create($this->getDatabase(), ['app', 'move_rehome_src']);
+
+        $moved = $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'move_rehome_src'],
+            ['app', 'move_parent', 'rehome_dst'],
+        );
+
+        self::assertSame(['app', 'move_parent', 'rehome_dst'], $moved->getPath());
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'move_rehome_src']));
+        self::assertTrue($this->dir->exists(
+            $this->getDatabase(),
+            ['app', 'move_parent', 'rehome_dst'],
+        ));
+    }
+
+    /**
+     * A `moveto`-style empty-path argument is rejected by `validatePath`
+     * before the new bounds checks execute; we add an explicit regression
+     * here so the empty-path guard cannot be silently dropped by a
+     * future refactor.
+     */
+    #[Test]
+    public function moveWithEmptySourcePathThrows(): void
+    {
+        $this->expectException(DirectoryException::class);
+        $this->expectExceptionMessage('Path must not be empty');
+
+        $this->dir->move($this->getDatabase(), [], ['destination']);
+    }
+
+    /**
+     * Crossing a partition boundary is rejected: a partition node cannot
+     * be silently re-parented under a non-partition parent, nor the
+     * other way around. Without the guard, this would leave the moved
+     * directory's prefix unchanged while its parent now lives in a
+     * different layer's subdirs index, breaking `partition.exists()`.
+     */
+    #[Test]
+    public function moveFromPartitionIntoTopLevelThrows(): void
+    {
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'part'], 'partition');
+        // A directory inside the partition:
+        $this->dir->create($this->getDatabase(), ['app', 'part', 'child']);
+
+        $this->expectException(DirectoryException::class);
+        $this->expectExceptionMessage('partition crossings are disallowed');
+
+        // Move ['app','part','child'] (layer=partition) into ['app','other'] (top).
+        $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'part', 'child'],
+            ['app', 'other'],
+        );
+
+        // Make $partition referenced so PHPStan doesn't complain about
+        // an unused variable (this is documentation, not data).
+        self::assertInstanceOf(DirectoryPartition::class, $partition);
+    }
+
+    /**
+     * The reverse cross — moving a top-level directory under a
+     * partition node — is also rejected.
+     */
+    #[Test]
+    public function moveFromTopLevelIntoPartitionThrows(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'top_a']);
+        $this->dir->create($this->getDatabase(), ['app', 'part2'], 'partition');
+
+        $this->expectException(DirectoryException::class);
+        $this->expectExceptionMessage('partition crossings are disallowed');
+
+        $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'top_a'],
+            ['app', 'part2', 'top_a'],
+        );
+    }
+
+    /**
+     * Same-partition moves within a partition still work (the
+     * layer-equality guard only rejects crosses between distinct
+     * layers, not moves within the same layer).
+     */
+    #[Test]
+    public function moveWithinSamePartitionStillSucceeds(): void
+    {
+        $this->dir->create($this->getDatabase(), ['app', 'part3'], 'partition');
+        $this->dir->create($this->getDatabase(), ['app', 'part3', 'sibling_a']);
+
+        $moved = $this->dir->move(
+            $this->getDatabase(),
+            ['app', 'part3', 'sibling_a'],
+            ['app', 'part3', 'sibling_b'],
+        );
+
+        self::assertSame(['app', 'part3', 'sibling_b'], $moved->getPath());
+        self::assertFalse($this->dir->exists($this->getDatabase(), ['app', 'part3', 'sibling_a']));
+        self::assertTrue($this->dir->exists($this->getDatabase(), ['app', 'part3', 'sibling_b']));
+    }
+
     #[Test]
     public function removeDirectory(): void
     {
