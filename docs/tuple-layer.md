@@ -112,3 +112,15 @@ $vs->isComplete(); // true
 ## Cross-Language Compatibility
 
 The encoding is binary-compatible with official FDB tuple layers in Python, Go, Java, and Ruby.
+
+## Nesting Depth Limit
+
+The encoder and decoder share a single hard cap on nested-tuple depth to protect the host process from denial-of-service inputs. The threshold is exposed as `Tuple::MAX_NESTING_DEPTH` (currently `100`):
+
+```php
+use CrazyGoat\FoundationDB\Tuple\Tuple;
+
+echo Tuple::MAX_NESTING_DEPTH; // 100
+```
+
+A payload that would recurse past `MAX_NESTING_DEPTH` levels (for example, a stored value consisting of hundreds of kilobytes of `\x05` TYPE_NESTED bytes) raises `\InvalidArgumentException` immediately at the offending call, instead of consuming the call stack until the process aborts. The guard fires symmetrically on the encode and decode paths — `pack()`, `unpack()`, `packWithVersionstamp()` and `hasIncompleteVersionstamp()` all honour the same constant, and the encode-side helpers `findVersionstampOffset` and `countVersionstamps` apply it while walking deeply-nested PHP arrays.

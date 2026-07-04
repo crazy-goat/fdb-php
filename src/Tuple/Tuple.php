@@ -6,6 +6,17 @@ namespace CrazyGoat\FoundationDB\Tuple;
 
 final class Tuple
 {
+    /**
+     * The deepest array-nesting level that {@see \CrazyGoat\FoundationDB\Tuple\Tuple}
+     * will tolerate in either pack() or unpack(). Nested arrays beyond this
+     * depth cause an {@see \InvalidArgumentException} to be raised at the
+     * encoded recursion site instead of consuming the call stack. The
+     * threshold is deliberately inclusive: a payload whose deepest recursion
+     * peak equals {@see Tuple::MAX_NESTING_DEPTH} is accepted, while
+     * {@see Tuple::MAX_NESTING_DEPTH}+1 is rejected.
+     */
+    public const MAX_NESTING_DEPTH = 100;
+
     private const TYPE_NULL = 0x00;
     private const TYPE_BYTES = 0x01;
     private const TYPE_STRING = 0x02;
@@ -30,7 +41,7 @@ final class Tuple
         $result = $prefix;
 
         foreach ($elements as $element) {
-            $result .= self::encodeElement($element, false);
+            $result .= self::encodeElement($element, false, 0);
         }
 
         return $result;
@@ -46,7 +57,7 @@ final class Tuple
         $versionstampCount = 0;
 
         foreach ($elements as $element) {
-            self::countVersionstamps($element, $versionstampCount);
+            self::countVersionstamps($element, $versionstampCount, 0);
         }
 
         if ($versionstampCount === 0) {
@@ -63,12 +74,12 @@ final class Tuple
 
         foreach ($elements as $element) {
             $offset = strlen($result);
-            $encoded = self::encodeElement($element, false);
+            $encoded = self::encodeElement($element, false, 0);
 
             if ($element instanceof Versionstamp) {
                 $versionstampOffset = $offset + 1;
             } elseif (is_array($element)) {
-                $innerOffset = self::findVersionstampOffset($element, $offset + 1);
+                $innerOffset = self::findVersionstampOffset($element, $offset + 1, 0);
                 if ($innerOffset >= 0) {
                     $versionstampOffset = $innerOffset;
                 }
@@ -91,7 +102,7 @@ final class Tuple
         $elements = [];
 
         while ($pos < $length) {
-            [$value, $consumed] = self::decodeElement($data, $pos, $length);
+            [$value, $consumed] = self::decodeElement($data, $pos, $length, 0);
             $elements[] = $value;
             $pos += $consumed;
         }
@@ -105,7 +116,7 @@ final class Tuple
     public static function hasIncompleteVersionstamp(array $elements): bool
     {
         foreach ($elements as $element) {
-            if (self::elementHasIncompleteVersionstamp($element)) {
+            if (self::elementHasIncompleteVersionstamp($element, 0)) {
                 return true;
             }
         }
@@ -136,7 +147,7 @@ final class Tuple
         return [$packed . "\x00", $packed . "\xFF"];
     }
 
-    private static function encodeElement(mixed $element, bool $nested): string
+    private static function encodeElement(mixed $element, bool $nested, int $depth): string
     {
         if ($element === null) {
             return $nested ? "\x00\xFF" : "\x00";
@@ -180,10 +191,23 @@ final class Tuple
 
         if (is_array($element)) {
             /** @var list<mixed> $element */
-            return self::encodeNestedTuple($element);
+            return self::encodeNestedTuple($element, $depth + 1);
         }
 
         throw new \InvalidArgumentException('Unsupported tuple element type: ' . get_debug_type($element));
+    }
+
+    /**
+     * @throws \InvalidArgumentException If `$depth` would recurse past {@see self::MAX_NESTING_DEPTH}.
+     */
+    private static function assertDepth(int $depth): void
+    {
+        if ($depth > self::MAX_NESTING_DEPTH) {
+            throw new \InvalidArgumentException(
+                'Tuple nesting depth exceeds the maximum of ' . self::MAX_NESTING_DEPTH
+                . ' (denial-of-service guard); got depth ' . $depth,
+            );
+        }
     }
 
     private static function encodeBytes(Bytes $bytes): string
@@ -363,12 +387,13 @@ final class Tuple
     /**
      * @param list<mixed> $elements
      */
-    private static function encodeNestedTuple(array $elements): string
+    private static function encodeNestedTuple(array $elements, int $depth): string
     {
+        self::assertDepth($depth);
         $result = chr(self::TYPE_NESTED);
 
         foreach ($elements as $element) {
-            $result .= self::encodeElement($element, true);
+            $result .= self::encodeElement($element, true, $depth);
         }
 
         return $result . "\x00";
@@ -377,7 +402,7 @@ final class Tuple
     /**
      * @return array{null|bool|int|float|string|\GMP|Bytes|SingleFloat|Uuid|Versionstamp|list<mixed>, int}
      */
-    private static function decodeElement(string $data, int $pos, int $length): array
+    private static function decodeElement(string $data, int $pos, int $length, int $depth): array
     {
         if ($pos >= $length) {
             throw new \InvalidArgumentException('Unexpected end of data at position ' . $pos);
@@ -389,7 +414,7 @@ final class Tuple
             $code === self::TYPE_NULL => [null, 1],
             $code === self::TYPE_BYTES => self::decodeBytes($data, $pos, $length),
             $code === self::TYPE_STRING => self::decodeString($data, $pos, $length),
-            $code === self::TYPE_NESTED => self::decodeNestedTuple($data, $pos, $length),
+            $code === self::TYPE_NESTED => self::decodeNestedTuple($data, $pos, $length, $depth + 1),
             $code === self::TYPE_INT_ZERO => [0, 1],
             $code > self::TYPE_INT_ZERO && $code <= self::TYPE_POS_INT_END
                 => self::decodePositiveInt($data, $pos, $length, $code),
@@ -436,8 +461,9 @@ final class Tuple
     /**
      * @return array{list<mixed>, int}
      */
-    private static function decodeNestedTuple(string $data, int $pos, int $length): array
+    private static function decodeNestedTuple(string $data, int $pos, int $length, int $depth): array
     {
+        self::assertDepth($depth);
         $elements = [];
         $innerPos = $pos + 1;
 
@@ -452,7 +478,7 @@ final class Tuple
                 return [$elements, $innerPos - $pos + 1];
             }
 
-            [$value, $consumed] = self::decodeElement($data, $innerPos, $length);
+            [$value, $consumed] = self::decodeElement($data, $innerPos, $length, $depth);
             $elements[] = $value;
             $innerPos += $consumed;
         }
@@ -776,15 +802,16 @@ final class Tuple
         return $bytes;
     }
 
-    private static function elementHasIncompleteVersionstamp(mixed $element): bool
+    private static function elementHasIncompleteVersionstamp(mixed $element, int $depth): bool
     {
         if ($element instanceof Versionstamp) {
             return !$element->isComplete();
         }
 
         if (is_array($element)) {
+            self::assertDepth($depth);
             foreach ($element as $child) {
-                if (self::elementHasIncompleteVersionstamp($child)) {
+                if (self::elementHasIncompleteVersionstamp($child, $depth + 1)) {
                     return true;
                 }
             }
@@ -793,13 +820,14 @@ final class Tuple
         return false;
     }
 
-    private static function countVersionstamps(mixed $element, int &$count): void
+    private static function countVersionstamps(mixed $element, int &$count, int $depth): void
     {
         if ($element instanceof Versionstamp) {
             $count++;
         } elseif (is_array($element)) {
+            self::assertDepth($depth);
             foreach ($element as $child) {
-                self::countVersionstamps($child, $count);
+                self::countVersionstamps($child, $count, $depth + 1);
             }
         }
     }
@@ -807,7 +835,7 @@ final class Tuple
     /**
      * @param list<mixed> $elements
      */
-    private static function findVersionstampOffset(array $elements, int $baseOffset): int
+    private static function findVersionstampOffset(array $elements, int $baseOffset, int $depth): int
     {
         $offset = $baseOffset;
 
@@ -817,14 +845,15 @@ final class Tuple
             }
 
             if (is_array($element)) {
+                self::assertDepth($depth);
                 /** @var list<mixed> $element */
-                $innerOffset = self::findVersionstampOffset($element, $offset + 1);
+                $innerOffset = self::findVersionstampOffset($element, $offset + 1, $depth + 1);
                 if ($innerOffset >= 0) {
                     return $innerOffset;
                 }
             }
 
-            $encoded = self::encodeElement($element, false);
+            $encoded = self::encodeElement($element, false, $depth);
             $offset += strlen($encoded);
         }
 

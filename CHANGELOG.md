@@ -43,3 +43,21 @@
   truncating to the first 8 bytes via `unpack('P')`. The previous behavior could return
   a wrong integer value if the stored value was malformed or larger than the 8-byte
   little-endian integer contract.
+- [#39] `Tuple::unpack()` and the encode side now reject
+  deeply-nested inputs at a fixed, public bound
+  (`Tuple::MAX_NESTING_DEPTH`, currently `100`) instead of
+  recursing without limit. Previously, a stored value made up
+  entirely of `\x05` TYPE_NESTED bytes (the issue's PoC was
+  hundreds of kilobytes) would exhaust the call stack and abort
+  the process whenever an application called `unpack()` /
+  `Subspace::unpack()` on data produced by a less-trusted writer.
+  The bound is enforced symmetrically on
+  `Tuple::pack()`, `Tuple::unpack()`,
+  `Tuple::packWithVersionstamp()`,
+  `Tuple::hasIncompleteVersionstamp()`, and on the encode-side
+  helpers `findVersionstampOffset` and `countVersionstamps`. Any
+  payload whose deepest recursion step would exceed
+  `MAX_NESTING_DEPTH` raises
+  `\InvalidArgumentException` immediately at the offending call;
+  wire bytes that round-trip just at the limit are still accepted,
+  so legitimate deeply-nested user data is unaffected.
