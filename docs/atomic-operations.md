@@ -138,6 +138,20 @@ $db->bitXor('flags', 0b00000001);
 $db->getInt('counter'); // ?int
 ```
 
+## Size Limits
+
+Atomic ops inherit the same key / value limits as regular writes:
+
+- key ≤ 10,000 bytes,
+- value / param ≤ 100,000 bytes (for `byteMax`, `byteMin`, `compareAndClear`,
+  `setVersionstampedKey`, `setVersionstampedValue`, and `atomicOp()` custom
+  byte params).
+
+Exceeding the limit throws `\InvalidArgumentException` immediately at the
+atomic-op call site, before the FFI call, with the actual length that failed.
+See [transactions.md → Size Limits](transactions.md#key--value-size-limits)
+for the full table and the defensive 32-bit FFI guard.
+
 ## Versionstamped Operations
 
 Versionstamped operations embed the commit version into keys or values:

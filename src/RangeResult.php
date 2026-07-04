@@ -95,15 +95,18 @@ final readonly class RangeResult implements \IteratorAggregate
         int $iteration,
         bool $reverse,
     ): FutureKeyValueArray {
+        $beginKeyLength = KeyValueLimits::assertValidRangeEndpoint($begin->key);
+        $endKeyLength = KeyValueLimits::assertValidRangeEndpoint($end->key);
+
         return new FutureKeyValueArray(
             $this->client->fdb->fdb_transaction_get_range(
                 $this->transaction->getPointer(),
                 $begin->key,
-                strlen($begin->key),
+                $beginKeyLength,
                 $begin->orEqual ? 1 : 0,
                 $begin->offset,
                 $end->key,
-                strlen($end->key),
+                $endKeyLength,
                 $end->orEqual ? 1 : 0,
                 $end->offset,
                 $limit,

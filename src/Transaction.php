@@ -28,35 +28,41 @@ final class Transaction extends ReadTransaction implements Transactor
     public function set(string|KeyConvertible $key, string $value): void
     {
         $resolvedKey = $this->resolveKey($key);
+        $keyLength = KeyValueLimits::assertValidKey($resolvedKey);
+        $valueLength = KeyValueLimits::assertValidValue($value);
 
         $this->client->fdb->fdb_transaction_set(
             $this->tpointer,
             $resolvedKey,
-            strlen($resolvedKey),
+            $keyLength,
             $value,
-            strlen($value),
+            $valueLength,
         );
     }
 
     public function clear(string|KeyConvertible $key): void
     {
         $resolvedKey = $this->resolveKey($key);
+        $keyLength = KeyValueLimits::assertValidKey($resolvedKey);
 
         $this->client->fdb->fdb_transaction_clear(
             $this->tpointer,
             $resolvedKey,
-            strlen($resolvedKey),
+            $keyLength,
         );
     }
 
     public function clearRange(string $begin, string $end): void
     {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
         $this->client->fdb->fdb_transaction_clear_range(
             $this->tpointer,
             $begin,
-            strlen($begin),
+            $beginLength,
             $end,
-            strlen($end),
+            $endLength,
         );
     }
 
@@ -130,11 +136,13 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function watch(string $key): FutureVoid
     {
+        $keyLength = KeyValueLimits::assertValidKey($key);
+
         return new FutureVoid(
             $this->client->fdb->fdb_transaction_watch(
                 $this->tpointer,
                 $key,
-                strlen($key),
+                $keyLength,
             ),
             $this->client,
         );
@@ -142,12 +150,15 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function atomicOp(MutationType $type, string $key, string $param): void
     {
+        $keyLength = KeyValueLimits::assertValidKey($key);
+        $paramLength = KeyValueLimits::assertValidValue($param);
+
         $this->client->fdb->fdb_transaction_atomic_op(
             $this->tpointer,
             $key,
-            strlen($key),
+            $keyLength,
             $param,
-            strlen($param),
+            $paramLength,
             $type->value,
         );
     }
@@ -209,13 +220,16 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function addReadConflictRange(string $begin, string $end): void
     {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
         $this->client->checkError(
             $this->client->fdb->fdb_transaction_add_conflict_range(
                 $this->tpointer,
                 $begin,
-                strlen($begin),
+                $beginLength,
                 $end,
-                strlen($end),
+                $endLength,
                 ConflictRangeType::Read->value,
             ),
         );
@@ -223,13 +237,16 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function addWriteConflictRange(string $begin, string $end): void
     {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
         $this->client->checkError(
             $this->client->fdb->fdb_transaction_add_conflict_range(
                 $this->tpointer,
                 $begin,
-                strlen($begin),
+                $beginLength,
                 $end,
-                strlen($end),
+                $endLength,
                 ConflictRangeType::Write->value,
             ),
         );
@@ -237,12 +254,40 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function addReadConflictKey(string $key): void
     {
-        $this->addReadConflictRange($key, $key . "\x00");
+        // Conflict keys are the [key, key + "\x00") range. Both endpoints must fit
+        // within the FDB key limit; a key one byte short of the limit pushes the end
+        // past it. Validate both endpoints up front so the application sees the
+        // error at the call site instead of during commit.
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($key);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($key . "\x00");
+
+        $this->client->checkError(
+            $this->client->fdb->fdb_transaction_add_conflict_range(
+                $this->tpointer,
+                $key,
+                $beginLength,
+                $key . "\x00",
+                $endLength,
+                ConflictRangeType::Read->value,
+            ),
+        );
     }
 
     public function addWriteConflictKey(string $key): void
     {
-        $this->addWriteConflictRange($key, $key . "\x00");
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($key);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($key . "\x00");
+
+        $this->client->checkError(
+            $this->client->fdb->fdb_transaction_add_conflict_range(
+                $this->tpointer,
+                $key,
+                $beginLength,
+                $key . "\x00",
+                $endLength,
+                ConflictRangeType::Write->value,
+            ),
+        );
     }
 
     public function options(): TransactionOptions
@@ -252,12 +297,18 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function setOption(int $option, ?string $value = null): void
     {
+        if ($value !== null) {
+            $valueLength = KeyValueLimits::assertValidFfiLength($value, 'Transaction option value');
+        } else {
+            $valueLength = 0;
+        }
+
         $this->client->checkError(
             $this->client->fdb->fdb_transaction_set_option(
                 $this->tpointer,
                 $option,
                 $value,
-                $value !== null ? strlen($value) : 0,
+                $valueLength,
             ),
         );
     }

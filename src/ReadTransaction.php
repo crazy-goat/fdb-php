@@ -25,12 +25,13 @@ class ReadTransaction
     public function get(string|KeyConvertible $key): FutureValue
     {
         $resolvedKey = $this->resolveKey($key);
+        $keyLength = KeyValueLimits::assertValidKey($resolvedKey);
 
         return new FutureValue(
             $this->client->fdb->fdb_transaction_get(
                 $this->tpointer,
                 $resolvedKey,
-                strlen($resolvedKey),
+                $keyLength,
                 $this->isSnapshot ? 1 : 0,
             ),
             $this->client,
@@ -39,11 +40,13 @@ class ReadTransaction
 
     public function getKey(KeySelector $selector): FutureKey
     {
+        $selectorKeyLength = KeyValueLimits::assertValidRangeEndpoint($selector->key);
+
         return new FutureKey(
             $this->client->fdb->fdb_transaction_get_key(
                 $this->tpointer,
                 $selector->key,
-                strlen($selector->key),
+                $selectorKeyLength,
                 $selector->orEqual ? 1 : 0,
                 $selector->offset,
                 $this->isSnapshot ? 1 : 0,
@@ -62,13 +65,16 @@ class ReadTransaction
 
     public function getEstimatedRangeSizeBytes(string $begin, string $end): FutureInt64
     {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
         return new FutureInt64(
             $this->client->fdb->fdb_transaction_get_estimated_range_size_bytes(
                 $this->tpointer,
                 $begin,
-                strlen($begin),
+                $beginLength,
                 $end,
-                strlen($end),
+                $endLength,
             ),
             $this->client,
         );
@@ -76,13 +82,16 @@ class ReadTransaction
 
     public function getRangeSplitPoints(string $begin, string $end, int $chunkSize): FutureKeyArray
     {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
         return new FutureKeyArray(
             $this->client->fdb->fdb_transaction_get_range_split_points(
                 $this->tpointer,
                 $begin,
-                strlen($begin),
+                $beginLength,
                 $end,
-                strlen($end),
+                $endLength,
                 $chunkSize,
             ),
             $this->client,
@@ -91,11 +100,13 @@ class ReadTransaction
 
     public function getAddressesForKey(string $key): FutureStringArray
     {
+        $keyLength = KeyValueLimits::assertValidKey($key);
+
         return new FutureStringArray(
             $this->client->fdb->fdb_transaction_get_addresses_for_key(
                 $this->tpointer,
                 $key,
-                strlen($key),
+                $keyLength,
             ),
             $this->client,
         );
@@ -115,6 +126,11 @@ class ReadTransaction
         $endSelector = $end instanceof KeySelector
             ? $end
             : KeySelector::firstGreaterOrEqual($end);
+
+        // Validate the resulting range endpoints eagerly so an oversize key fails at
+        // the call site instead of when iteration starts.
+        KeyValueLimits::assertValidRangeEndpoint($beginSelector->key);
+        KeyValueLimits::assertValidRangeEndpoint($endSelector->key);
 
         return new RangeResult(
             $this,

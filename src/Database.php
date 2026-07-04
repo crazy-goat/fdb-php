@@ -46,12 +46,14 @@ final class Database implements Transactor, ReadTransactor
     {
         $this->ensureOpen();
 
+        $nameLength = KeyValueLimits::assertValidFfiLength($name, 'Tenant name');
+
         $tpointer = $this->client->fdb->new('FDBTenant*');
         $this->client->checkError(
             $this->client->fdb->fdb_database_open_tenant(
                 $this->dpointer,
                 $name,
-                strlen($name),
+                $nameLength,
                 FFI::addr($tpointer),
             ),
         );

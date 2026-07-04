@@ -40,7 +40,13 @@ final readonly class AdminClient
             // Enable writes to special key space
             $tr->options()->setSpecialKeySpaceEnableWrites();
 
+            // Validate up front: the prefix overhead + this name must still fit
+            // within the FDB key size limit. Asserting before set() guarantees the
+            // failure surfaces inside this call site rather than as an opaque
+            // commit-time error.
             $key = self::TENANT_MAP_PREFIX . $name;
+            KeyValueLimits::assertValidKey($key);
+
             $tr->set($key, '{}'); // Empty JSON object as value
         });
     }
@@ -60,6 +66,8 @@ final readonly class AdminClient
             $tr->options()->setSpecialKeySpaceEnableWrites();
 
             $key = self::TENANT_MAP_PREFIX . $name;
+            KeyValueLimits::assertValidKey($key);
+
             $tr->clear($key);
         });
     }
@@ -171,6 +179,12 @@ final readonly class AdminClient
             $tr->options()->setSpecialKeySpaceEnableWrites();
 
             $key = "\xff\xff/management/excluded/{$address}";
+
+            // Tenant/server identifiers flow into a special key with a fixed
+            // prefix overhead; validate up front so pathological inputs fail here
+            // instead of as an opaque commit-time error.
+            KeyValueLimits::assertValidKey($key);
+
             $tr->set($key, '');
         });
     }
@@ -189,6 +203,8 @@ final readonly class AdminClient
             $tr->options()->setSpecialKeySpaceEnableWrites();
 
             $key = "\xff\xff/management/excluded/{$address}";
+            KeyValueLimits::assertValidKey($key);
+
             $tr->clear($key);
         });
     }
