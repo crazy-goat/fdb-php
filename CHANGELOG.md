@@ -20,3 +20,8 @@
   batch and then stopped immediately, producing an ambiguous single-batch result. `limit: 0` is
   now explicitly treated as "no rows" (empty iterator), while `limit: null` remains the way to
   request all matching rows.
+- [#50] `ReadTransaction::getInt()` and `HighContentionAllocator::decodeCount()` now reject
+  stored values longer than 8 bytes with a clear `RuntimeException` instead of silently
+  truncating to the first 8 bytes via `unpack('P')`. The previous behavior could return
+  a wrong integer value if the stored value was malformed or larger than the 8-byte
+  little-endian integer contract.

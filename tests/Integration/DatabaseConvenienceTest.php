@@ -213,6 +213,49 @@ final class DatabaseConvenienceTest extends TestCase
     }
 
     #[Test]
+    public function getIntRoundTripsViaAtomicAdd(): void
+    {
+        $key = 'test/conv/getint-roundtrip';
+
+        $this->getDatabase()->transact(function ($tr) use ($key): void {
+            $tr->set($key, pack('P', 100));
+            $tr->add($key, 23);
+        });
+
+        self::assertSame(123, $this->getDatabase()->getInt($key));
+    }
+
+    #[Test]
+    public function getIntRejectsOversizedStoredValue(): void
+    {
+        $key = 'test/conv/getint-oversized';
+
+        // Write 12 bytes — more than the 8-byte integer contract.
+        $this->getDatabase()->set($key, str_repeat("\x05", 12));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('stored value is 12 bytes');
+
+        $this->getDatabase()->getInt($key);
+    }
+
+    #[Test]
+    public function getIntReadBreakdownBySizeCases(): void
+    {
+        // 1 byte
+        $this->getDatabase()->set('test/conv/getint/1b', "\x07");
+        self::assertSame(7, $this->getDatabase()->getInt('test/conv/getint/1b'));
+
+        // 4 bytes little-endian
+        $this->getDatabase()->set('test/conv/getint/4b', pack('V', 305419896)); // 0x12345678
+        self::assertSame(0x12345678, $this->getDatabase()->getInt('test/conv/getint/4b'));
+
+        // 8 bytes little-endian
+        $this->getDatabase()->set('test/conv/getint/8b', pack('P', 0xDEADBEEF));
+        self::assertSame(0xDEADBEEF, $this->getDatabase()->getInt('test/conv/getint/8b'));
+    }
+
+    #[Test]
     public function compareAndClearRemovesKeyWhenValueMatches(): void
     {
         $this->getDatabase()->set('test/conv/cac', 'match_me');

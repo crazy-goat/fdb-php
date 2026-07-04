@@ -111,7 +111,15 @@ final readonly class HighContentionAllocator
 
     private function decodeCount(string $value): int
     {
-        if (strlen($value) < 8) {
+        $length = strlen($value);
+        if ($length > 8) {
+            throw new \RuntimeException(sprintf(
+                'Cannot decode counter: stored value is %d bytes, expected at most 8.',
+                $length,
+            ));
+        }
+
+        if ($length < 8) {
             $value = str_pad($value, 8, "\x00");
         }
 
