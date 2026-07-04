@@ -178,7 +178,13 @@ class ReadTransaction
      * This is the counterpart to Transaction::add(), ::max(), ::min() and other
      * integer-based atomic operations.
      *
+     * Stored values smaller than 8 bytes are right-padded with zero bytes;
+     * values larger than 8 bytes are rejected with an exception because silently
+     * truncating to 8 bytes would be observable only as incorrect data.
+     *
      * @return ?int null if the key does not exist
+     *
+     * @throws \RuntimeException if the stored value is longer than 8 bytes or cannot be unpacked
      */
     public function getInt(string|KeyConvertible $key): ?int
     {
@@ -188,14 +194,36 @@ class ReadTransaction
             return null;
         }
 
-        if (strlen($raw) < 8) {
+        return self::decodeLittleEndianInt($raw);
+    }
+
+    /**
+     * Decode a little-endian unsigned 64-bit integer from a byte string.
+     *
+     * Values shorter than 8 bytes are right-padded with zero bytes.
+     * Values longer than 8 bytes cause a RuntimeException to make the
+     * over-sized stored value visible instead of silently truncating it.
+     *
+     * @throws \RuntimeException if the value exceeds 8 bytes or unpack fails
+     */
+    protected static function decodeLittleEndianInt(string $raw): int
+    {
+        $length = strlen($raw);
+        if ($length > 8) {
+            throw new \RuntimeException(sprintf(
+                'Cannot decode integer: stored value is %d bytes, expected at most 8.',
+                $length,
+            ));
+        }
+
+        if ($length < 8) {
             $raw = str_pad($raw, 8, "\x00");
         }
 
         $unpacked = unpack('P', $raw);
 
         if ($unpacked === false) {
-            throw new \RuntimeException('Failed to decode integer value for key');
+            throw new \RuntimeException('Failed to decode integer value');
         }
 
         return $unpacked[1];

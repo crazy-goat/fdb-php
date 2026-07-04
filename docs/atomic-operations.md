@@ -74,7 +74,7 @@ $db->readTransact(function ($snap) {
 });
 ```
 
-`getInt()` decodes the stored bytes as an unsigned 64-bit little-endian integer. It returns `null` if the key does not exist. If the stored value is shorter than 8 bytes, it is zero-padded.
+`getInt()` decodes the stored bytes as an unsigned 64-bit little-endian integer. It returns `null` if the key does not exist. If the stored value is shorter than 8 bytes, it is zero-padded. If the stored value is longer than 8 bytes, `RuntimeException` is thrown to avoid silently truncating the input — callers should treat the key as non-integer data in that case.
 
 ## Bitwise Operations
 
