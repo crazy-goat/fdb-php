@@ -28,6 +28,41 @@
   message) are covered by `tests/Unit/DirectoryPrefixValidationTest.php`;
   end-to-end acceptance and round-trip behavior are covered in
   `tests/Integration/DirectoryTest.php`.
+- [#40] `DirectoryLayer::move()` now enforces explicit bounds on its path
+  arguments at the PHP trust boundary, replacing the previous silent-
+  permissive behavior that allowed moving a directory into its own subtree
+  or across a partition boundary. Five explicit checks were added (and unit
+  + integration tests cover all of them):
+
+  | Rule tested on the supplied paths                                                                                          | Behaviour                                                                                                |
+  |---------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+  | `newPath` is empty                                                                                                        | `DirectoryException`: `Path must not be empty.` (existing path guard retained)                           |
+  | `oldPath` is empty                                                                                                        | `DirectoryException`: `Path must not be empty.` (existing path guard retained)                           |
+  | `newPath` equals `oldPath`                                                                                                | `DirectoryException`: source and destination paths are identical (avoids a no-op that still rewrites the subdirs index) |
+  | `newPath` begins with `oldPath` as a prefix (`array_slice($newPath, 0, count($oldPath)) === $oldPath`)                   | `DirectoryException`: destination is inside the source's subtree (would create a cycle / unreachable sub-tree) |
+  | `count($oldPath) > 64` or `count($newPath) > 64` (`MAX_MOVE_PATH_DEPTH`)                                                  | `DirectoryException`: path exceeds maximum depth (bounds defence against malformed inputs producing arbitrarily deep entries) |
+  | the immediate parents of `oldPath` and `newPath` carry different partition layers                                                              | `DirectoryException`: `partition crossings are disallowed` (a directory must not be silently re-parented out of or into a different partition; the check is on the parents, not on `oldPath`'s own `layer` attribute, because a child borrows its parent's partition membership regardless of its own layer string) |
+
+  Previously, `move(['a'], ['a','b'])` succeeded silently and produced a
+  cycle in the subdirs index; `move(['p','a'], ['x','a'])` silently
+  re-parented a partition node under a top-level parent, leaving the
+  moved prefix in a different layer's content space. The fix routes
+  every call through `DirectoryLayer::validateMoveBounds()` (path-only
+  checks) and `DirectoryLayer::assertSamePartitionLayer()`
+  (layer-aware check), both of which throw `DirectoryException` with a
+  printable rendering of the offending paths (control bytes, DEL, high
+  bytes, and `/` inside segments are all escaped to `\xHH`) **before any
+  `set()` / `clear()` runs**, so a rejected move leaves the directory
+  index untouched and the same `oldPath` can be retried with a
+  different `newPath`. Path-only validation is covered by 16 cases in
+  `tests/Unit/DirectoryMoveBoundsValidationTest.php`; layer-aware
+  partition-crossing validation is covered by 8 cases in the same unit
+  test; transactional happy and rejection paths (sibling rename,
+  re-parenting under an existing parent, same-partition rename, and
+  self-subtree rejection leaving the index untouched) are covered in
+  `tests/Integration/DirectoryTest.php`. The new contract is
+  documented in the class-level doc-block on
+  `DirectoryLayer::move()` and in `docs/directory-layer.md`.
 - [#48] FoundationDB key/value lengths now checked at the PHP trust boundary
   with explicit, named exceptions instead of an unchecked `strlen()` flowing
   straight into a C `int` FFI parameter. New `KeyValueLimits::assertValidKey()` /
