@@ -74,10 +74,16 @@ final readonly class AdminClient
      */
     public function listTenants(): array
     {
+        $end = KeyUtil::strinc(self::TENANT_MAP_PREFIX);
+        if ($end === null) {
+            throw new \RuntimeException(
+                'Cannot compute tenant range end key: prefix is empty or entirely 0xFF bytes'
+            );
+        }
+
         /** @var list<KeyValue> $results */
-        $results = $this->database->transact(function (Transaction $tr): array {
+        $results = $this->database->transact(function (Transaction $tr) use ($end): array {
             $begin = self::TENANT_MAP_PREFIX;
-            $end = self::TENANT_MAP_PREFIX . '\xff';
 
             return $tr->getRange($begin, $end)->toArray();
         });

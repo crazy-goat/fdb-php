@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Fixed
+- [#37] AdminClient::listTenants: end-key for tenant range scan now uses
+  `KeyUtil::strinc(self::TENANT_MAP_PREFIX)` instead of a single-quoted `'\xff'` literal.
+  The old code silently returned an incomplete tenant list because single-quoted `'\xff'`
+  is the 4-byte ASCII string `\xff` (0x5C 0x78 0x66 0x66), not the byte 0xFF. This caused
+  all tenants with names starting at or above byte 0x5C (i.e. essentially all lowercase
+  letters) to be omitted from the result.
 - [#56] PHPStan: configure `--memory-limit=512M` in the `phpstan` composer script to prevent
   analysis from crashing under the default 128M limit on large codebases.
 - [#36] FutureStringArray: `await()` now copies `char*` elements into owned PHP strings via
