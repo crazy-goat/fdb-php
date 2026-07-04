@@ -23,6 +23,38 @@ $orders = $dir->create($db, ['app', 'orders']);
 $existing = $dir->open($db, ['app', 'users']);
 ```
 
+### Creating a Directory with an Explicit Prefix
+
+For migration scenarios (restoring a directory from a backup, importing a
+partition from another cluster, or pre-allocating a binary prefix that an
+external system already references), `create()` accepts an explicit
+`prefix` argument that overrides the HighContentionAllocator:
+
+```php
+$partition = $dir->create(
+    $db,
+    ['imported', 'partition'],
+    layer: 'partition',
+    prefix: "\xFErestored-prefix-bytes",
+);
+```
+
+The explicit prefix is the **raw byte string** used as the directory's
+internal prefix — it is NOT prefixed automatically with the content
+subspace key. The layer rejects a caller-supplied prefix that would
+collide with anything already in the keyspace:
+
+| Condition                                                  | Result                                       |
+|------------------------------------------------------------|----------------------------------------------|
+| prefix is `''` (empty)                                     | `DirectoryException`: must not be empty      |
+| node-metadata range at the prefix is not empty             | `DirectoryException`: conflicts with metadata |
+| content-key range at the prefix is not empty               | `DirectoryException`: overlaps content keys  |
+| prefix is non-empty and both ranges are empty              | accepted; directory created                  |
+
+All three rejections **abort the transaction before any write**, so a
+failed `create()` does not leave partial state and the same `path` can be
+retried with `prefix: null` for auto-allocation.
+
 ## Using Directories as Subspaces
 
 DirectorySubspace extends Subspace:

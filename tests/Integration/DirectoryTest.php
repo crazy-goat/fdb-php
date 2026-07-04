@@ -409,4 +409,139 @@ final class DirectoryTest extends TestCase
         self::assertNull($this->getDatabase()->get($users->pack(['order1'])));
         self::assertNull($this->getDatabase()->get($orders->pack(['alice'])));
     }
+
+    // --- issue #41: caller-supplied prefix must be validated ------------------
+
+    /**
+     * A free binary prefix that fits the directory layout must be accepted
+     * and round-trip via open().
+     */
+    #[Test]
+    public function createWithExplicitPrefixSucceedsWhenFree(): void
+    {
+        // 16 bytes of binary prefix — long enough to be unique across
+        // tests runs in CI and short enough that the cluster doesn't
+        // object; this also proves binary, non-printable prefixes are
+        // accepted (which is what real FDB partitions use externally).
+        $explicit = "\x01explicit_prefix_" . random_bytes(8);
+
+        $created = $this->dir->create(
+            $this->getDatabase(),
+            ['app', 'explicit_ok'],
+            layer: '',
+            prefix: $explicit,
+        );
+
+        self::assertInstanceOf(DirectorySubspace::class, $created);
+
+        // Round-trip: opening the same directory must yield the same
+        // rawPrefix value, demonstrating that the explicit prefix was
+        // actually persisted (and not silently re-allocated or rewritten).
+        $opened = $this->dir->open($this->getDatabase(), ['app', 'explicit_ok']);
+        self::assertSame($explicit, $opened->rawPrefix);
+
+        // The subspace must be usable for normal read/write.
+        $this->getDatabase()->set($opened->pack(['k']), 'v');
+        self::assertSame('v', $this->getDatabase()->get($opened->pack(['k'])));
+    }
+
+    /**
+     * Two distinct explicit prefixes are both accepted when they don't
+     * collide, and yield distinct DirectorySubspace raw prefixes.
+     */
+    #[Test]
+    public function createWithTwoDistinctExplicitPrefixesSucceeds(): void
+    {
+        $a = "\x01a_explicit_" . random_bytes(8);
+        $b = "\x01b_explicit_" . random_bytes(8);
+
+        $dirA = $this->dir->create(
+            $this->getDatabase(),
+            ['app', 'explicit_a'],
+            layer: '',
+            prefix: $a,
+        );
+        $dirB = $this->dir->create(
+            $this->getDatabase(),
+            ['app', 'explicit_b'],
+            layer: '',
+            prefix: $b,
+        );
+
+        self::assertSame($a, $dirA->rawPrefix);
+        self::assertSame($b, $dirB->rawPrefix);
+        self::assertNotSame($dirA->rawPrefix, $dirB->rawPrefix);
+    }
+
+    /**
+     * An empty-string explicit prefix must be rejected up front, with
+     * a clear DirectoryException, before any transaction state is
+     * mutated. The path must still be creatable afterwards via
+     * auto-allocation.
+     */
+    #[Test]
+    public function createWithExplicitEmptyPrefixThrowsAndDoesNotMutate(): void
+    {
+        try {
+            $this->dir->create(
+                $this->getDatabase(),
+                ['app', 'empty_prefix'],
+                layer: '',
+                prefix: '',
+            );
+            self::fail('Expected DirectoryException for empty prefix.');
+        } catch (DirectoryException $e) {
+            self::assertStringContainsString(
+                'Caller-supplied prefix must not be empty.',
+                $e->getMessage(),
+            );
+        }
+
+        // The path must still be creatable via the auto-allocation path
+        // (i.e. the failed create() above did not commit a partial write).
+        $retry = $this->dir->create(
+            $this->getDatabase(),
+            ['app', 'empty_prefix'],
+            layer: '',
+        );
+        self::assertInstanceOf(DirectorySubspace::class, $retry);
+    }
+
+    /**
+     * An explicit prefix that overlaps an existing content-key range
+     * must be rejected. We pre-populate the content subspace at a key
+     * that lies under (contentSubspace->key() + $rawPrefix) and then
+     * attempt to use that $rawPrefix as an explicit directory prefix.
+     *
+     * The integration coverage here complements the unit-test assertion
+     * over the same path by exercising the *real* Transaction probe
+     * (`getRangeStartsWith` on a live cluster) against data the test
+     * itself wrote under a known prefix.
+     */
+    #[Test]
+    public function createWithExplicitPrefixOverlappingContentThrows(): void
+    {
+        $raw = "\x02content_prefix_" . random_bytes(8);
+        // contentSubspace is constructed with rawPrefix '' (the default);
+        // therefore content keys live at "" + ("\x02...")-starting bytes.
+        $conflictKey = $raw . 'a';
+
+        $db = $this->getDatabase();
+        $db->set($conflictKey, 'occupied');
+
+        try {
+            $this->expectException(DirectoryException::class);
+            $this->expectExceptionMessage('overlaps existing content keys');
+
+            $this->dir->create(
+                $db,
+                ['app', 'collide_content_attempt'],
+                layer: '',
+                prefix: $raw,
+            );
+        } finally {
+            // Cleanup so later tests in the same run aren't affected.
+            @$db->clear($conflictKey);
+        }
+    }
 }

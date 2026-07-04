@@ -3,6 +3,31 @@
 ## [Unreleased]
 
 ### Fixed
+- [#41] `DirectoryLayer::create()` now validates a caller-supplied
+  `prefix` argument before writing anything. Three explicit checks were
+  added (and unit + integration tests cover all of them):
+
+  | Condition tested on the proposed prefix                      | Behaviour                                                         |
+  |--------------------------------------------------------------|-------------------------------------------------------------------|
+  | prefix is `''` (empty)                                       | `DirectoryException`: must not be empty.                          |
+  | node-metadata range under the proposed prefix is not empty   | `DirectoryException`: conflicts with existing directory metadata. |
+  | content-key range under the proposed prefix is not empty     | `DirectoryException`: overlaps existing content keys.             |
+  | none of the above                                            | accepted; directory created                                       |
+
+  Previously, `create(..., $prefix)` only ran the conflict check inside
+  the `if ($prefix === null)` allocation branch; a caller-supplied
+  prefix was written directly into the subdirs index without any check,
+  so a manual prefix overlapping existing metadata or content keys
+  silently corrupted or overwrote data. The fix routes caller-supplied
+  prefixes through `DirectoryLayer::validateRawPrefix()` (a static,
+  self-contained validation helper), which throws with a
+  `DirectoryException` carrying a printable rendering of the offending
+  key. The check runs inside the transaction before any `set()` call,
+  so a failed create leaves no partial state. Strict boundaries
+  (empty prefix check, both free-range probes, printable diagnostic
+  message) are covered by `tests/Unit/DirectoryPrefixValidationTest.php`;
+  end-to-end acceptance and round-trip behavior are covered in
+  `tests/Integration/DirectoryTest.php`.
 - [#48] FoundationDB key/value lengths now checked at the PHP trust boundary
   with explicit, named exceptions instead of an unchecked `strlen()` flowing
   straight into a C `int` FFI parameter. New `KeyValueLimits::assertValidKey()` /
