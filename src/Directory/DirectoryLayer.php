@@ -356,9 +356,15 @@ final readonly class DirectoryLayer
 
             if (!$this->isPrefixFree($tr, $prefix)) {
                 throw new DirectoryException(
-                    'Allocated prefix conflicts with existing data.',
+                    'Allocated prefix conflicts with existing directory metadata.',
                 );
             }
+        } else {
+            // Caller-supplied prefix: validate length, node-metadata range
+            // freedom, and content-range freedom before any write so a
+            // conflicting explicit prefix cannot silently corrupt or
+            // overwrite existing keys.
+            $this->assertValidCallerSuppliedPrefix($tr, $prefix);
         }
 
         $parentPath = array_slice($path, 0, -1);
@@ -455,6 +461,92 @@ final readonly class DirectoryLayer
     {
         $nodePrefix = $this->nodeSubspace->key() . $prefix;
         return $tr->getRangeStartsWith($nodePrefix)->toArray() === [];
+    }
+
+    /**
+     * Validate a caller-supplied raw (NOT content-prefixed) prefix before it
+     * enters the directory layer state. Throws DirectoryException with a
+     * descriptive message if validation fails; the transaction is not
+     * modified. The two probe callables receive the content-subspace-
+     * prefixed key and return true if any key exists at that prefix.
+     *
+     * @param callable(string): bool $nodeProbe    true if directory-metadata
+     *        keys already exist under the given key.
+     * @param callable(string): bool $contentProbe true if content keys
+     *        already exist under the given key.
+     */
+    private function validateRawPrefix(
+        string $rawPrefix,
+        string $contentSubspaceKey,
+        callable $nodeProbe,
+        callable $contentProbe,
+    ): void {
+        if ($rawPrefix === '') {
+            throw new DirectoryException(
+                'Caller-supplied prefix must not be empty.',
+            );
+        }
+
+        $contentPrefixed = $contentSubspaceKey . $rawPrefix;
+
+        if ($nodeProbe($contentPrefixed)) {
+            throw new DirectoryException(
+                sprintf(
+                    'Caller-supplied prefix conflicts with existing directory metadata: %s.',
+                    $this->printablePrefix($contentPrefixed),
+                ),
+            );
+        }
+
+        if ($contentProbe($contentPrefixed)) {
+            throw new DirectoryException(
+                sprintf(
+                    'Caller-supplied prefix overlaps existing content keys: %s.',
+                    $this->printablePrefix($contentPrefixed),
+                ),
+            );
+        }
+    }
+
+    /**
+     * Adapter that calls {@see self::validateRawPrefix()} against live
+     * probes derived from a real FoundationDB transaction.
+     */
+    private function assertValidCallerSuppliedPrefix(
+        Transaction $tr,
+        string $prefix,
+    ): void {
+        $this->validateRawPrefix(
+            $prefix,
+            $this->contentSubspace->key(),
+            // The node-metadata range query prepends the nodeSubspace->key()
+            // on top of the (contentSubspace->key() + prefix) composition.
+            function (string $key) use ($tr): bool {
+                $nodeKey = $this->nodeSubspace->key() . $key;
+
+                return $tr->getRangeStartsWith($nodeKey)->toArray() !== [];
+            },
+            fn(string $key): bool => $tr->getRangeStartsWith($key)->toArray() !== []
+        );
+    }
+
+    private function printablePrefix(string $prefix): string
+    {
+        // Render non-printable bytes with \xHH so the error message is
+        // diagnostic even when the prefix contains binary data.
+        $out = '';
+        $length = strlen($prefix);
+
+        for ($i = 0; $i < $length; $i++) {
+            $byte = ord($prefix[$i]);
+            if ($byte >= 0x20 && $byte < 0x7F) {
+                $out .= $prefix[$i];
+            } else {
+                $out .= sprintf('\x%02X', $byte);
+            }
+        }
+
+        return $out;
     }
 
     private function checkVersion(Transaction $tr): void
