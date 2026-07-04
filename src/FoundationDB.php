@@ -16,6 +16,40 @@ final class FoundationDB
     /** @var array<string, Database> */
     private static array $databases = [];
 
+    /**
+     * Default maximum number of `on_error()` retry attempts for the
+     * convenience retry loops on `Database::transact()`,
+     * `Database::readTransact()`, and the four `watch` helpers.
+     *
+     * `0` means "unlimited" — i.e. preserve the historical
+     * `while (true)` semantics that rely entirely on FDB's
+     * `fdb_transaction_on_error()` to eventually bubble a
+     * non-retryable error back to PHP. The default is `0`. Set a
+     * positive integer via `defaultTransactionRetryLimit()` to opt
+     * into a deterministic upper bound; when the ceiling is
+     * reached, the loop throws
+     * `TransactionRetryLimitExceededException` synchronously,
+     * regardless of whether FDB still classifies the current error
+     * as retryable.
+     *
+     * Mirrors the default FDB Java binding's `Transaction.RETRY_LIMIT`
+     * default (no built-in ceiling in the C client); we expose the
+     * knob explicitly because the C client cannot.
+     */
+    private static int $defaultTransactionRetryLimit = 0;
+
+    /**
+     * Default per-transaction wall-clock ceiling for the same set
+     * of convenience retry loops, in fractional seconds. `0.0`
+     * means "unlimited" (the default). Setting via
+     * `defaultTransactionTimeoutSeconds()` is opt-in: at every
+     * `on_error().await()` boundary the loops check elapsed time
+     * and, when the configured wall-clock budget is exhausted,
+     * throw `TransactionRetryLimitExceededException` even if the
+     * retry-count ceiling would still allow another attempt.
+     */
+    private static float $defaultTransactionTimeoutSeconds = 0.0;
+
     private function __construct()
     {
     }
@@ -54,6 +88,75 @@ final class FoundationDB
     public static function getMaxApiVersion(): int
     {
         return NativeClient::getInstance()->fdb->fdb_get_max_api_version();
+    }
+
+    /**
+     * Configure the default per-transaction retry-attempt ceiling used
+     * by `Database::transact()`, `Database::readTransact()`,
+     * `Database::watch()`, `Database::getAndWatch()`,
+     * `Database::setAndWatch()`, and `Database::clearAndWatch()`.
+     *
+     * - `$limit = 0` (default) preserves the historical unbounded
+     *   `while (true)` behaviour: the loops rely entirely on FDB's
+     *   `fdb_transaction_on_error()` to eventually bubble a
+     *   non-retryable error back to PHP. A persistently conflicting
+     *   workload can therefore spin indefinitely under the default.
+     * - `$limit > 0` sets an explicit upper bound. After `$limit`
+     *   on-error retry attempts, the loop throws
+     *   `TransactionRetryLimitExceededException` synchronously, with
+     *   the actual attempt count and elapsed wall-clock seconds.
+     * - `$limit < 0` is rejected at configuration time with
+     *   `\InvalidArgumentException`, so a typo can't silently
+     *   disable the ceiling.
+     *
+     * The setting is process-wide (static); it is intentionally
+     * not per-`Database` because, like `apiVersion()`, it represents
+     * library-level policy that the process opts into once. Reset to
+     * 0 via `FoundationDB::reset()` (test-only and process-shutdown
+     * convenience).
+     */
+    public static function defaultTransactionRetryLimit(int $limit): void
+    {
+        if ($limit < 0) {
+            throw new \InvalidArgumentException(
+                'defaultTransactionRetryLimit must be >= 0; use 0 for unbounded. Got: ' . $limit,
+            );
+        }
+
+        self::$defaultTransactionRetryLimit = $limit;
+    }
+
+    public static function getDefaultTransactionRetryLimit(): int
+    {
+        return self::$defaultTransactionRetryLimit;
+    }
+
+    /**
+     * Configure the default per-transaction wall-clock ceiling used
+     * by the same set of convenience retry loops. `$seconds = 0.0`
+     * (default) means "unlimited"; a positive value sets an
+     * explicit upper bound. Negative values are rejected with
+     * `\InvalidArgumentException`.
+     *
+     * When both a retry-count limit and a wall-clock limit are
+     * configured, whichever ceiling is hit first throws
+     * `TransactionRetryLimitExceededException`.
+     */
+    public static function defaultTransactionTimeoutSeconds(float $seconds): void
+    {
+        if ($seconds < 0.0) {
+            throw new \InvalidArgumentException(
+                'defaultTransactionTimeoutSeconds must be >= 0.0; use 0.0 for unbounded. Got: '
+                . var_export($seconds, true),
+            );
+        }
+
+        self::$defaultTransactionTimeoutSeconds = $seconds;
+    }
+
+    public static function getDefaultTransactionTimeoutSeconds(): float
+    {
+        return self::$defaultTransactionTimeoutSeconds;
     }
 
     public static function open(?string $clusterFile = null): Database
@@ -139,5 +242,7 @@ final class FoundationDB
     {
         self::$apiVersion = null;
         self::$databases = [];
+        self::$defaultTransactionRetryLimit = 0;
+        self::$defaultTransactionTimeoutSeconds = 0.0;
     }
 }

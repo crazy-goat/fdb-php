@@ -416,3 +416,83 @@ The same applies to `clear()`, `clearRange()`, `atomicOp()`, `watch()`, `get()`,
 keeps a `> 2 GB` payload from silently truncating at the C boundary. The defensive
 FFI guard (`KeyValueLimits::MAX_FFI_LENGTH`) fires only for pathological inputs —
 every realistic FoundationDB payload is well below it.
+
+---
+
+## Bounded retry (opt-in)
+
+The retry loop in `transact()`, `readTransact()`, and the four
+`watch*` helpers (`watch`, `getAndWatch`, `setAndWatch`,
+`clearAndWatch`) is bounded by an **opt-in**, **process-wide** retry
+budget that the application configures via `FoundationDB`:
+
+| Setting                                                      | Default | Purpose                                   |
+|--------------------------------------------------------------|---------|-------------------------------------------|
+| `FoundationDB::defaultTransactionRetryLimit(int)`            | `0`     | Max `on_error().await()` retries per call. `0` = unbounded. |
+| `FoundationDB::defaultTransactionTimeoutSeconds(float)`      | `0.0`   | Max wall-clock seconds per call. `0.0` = unbounded. |
+
+Both ceilings are independent. Whichever is hit first throws
+`CrazyGoat\FoundationDB\TransactionRetryLimitExceededException`
+synchronously, with the actual attempt count and elapsed wall-clock
+seconds.
+
+The default of `0` for both — **unbounded** — preserves the
+historical `while (true)` semantics: the loop relies on
+`fdb_transaction_on_error()` to eventually bubble a non-retryable
+error back to PHP. A persistent conflict workload can therefore
+spin indefinitely under the default. To opt in:
+
+```php
+use CrazyGoat\FoundationDB\FoundationDB as FDB;
+
+FDB::apiVersion(730);
+
+// At process startup, before the first transact() call:
+FDB::defaultTransactionRetryLimit(50);        // up to 50 retries per call
+FDB::defaultTransactionTimeoutSeconds(5.0);   // ...or 5 seconds, whichever comes first
+```
+
+If `defaultTransactionRetryLimit(-1)` or
+`defaultTransactionTimeoutSeconds(-0.5)` is set, the call throws
+`\InvalidArgumentException` synchronously — a typo cannot silently
+disable the ceiling. Every call to `transact()` (or any of the
+helpers above) then has a deterministic upper bound:
+
+```php
+$db = FDB::open();
+
+try {
+    $db->transact(function ($tr) {
+        // ...write/read ...
+    });
+} catch (\CrazyGoat\FoundationDB\TransactionRetryLimitExceededException $e) {
+    // $e->attempts       — number of on_error retries consumed
+    // $e->elapsedSeconds  — wall-clock seconds since the call started
+    // $e->getMessage()    — distinguishes the boundary that was crossed
+    //                        ("wall-clock limit exceeded" vs
+    //                         "attempt limit exceeded").
+    error_log(sprintf(
+        'Retry ceiling reached: %d attempts after %.3fs',
+        $e->attempts,
+        $e->elapsedSeconds,
+    ));
+}
+```
+
+This ceiling is **library-level** — it wraps the retry loop in the
+PHP helper layer. It is distinct from FDB's own per-transaction
+options (`TransactionOptions::setRetryLimit(int)`,
+`TransactionOptions::setTimeout(int)`,
+`TransactionOptions::setMaxRetryDelay(int)`), which operate inside
+the native transaction. Both layers cooperate: the application
+typically wants to set FDB's per-transaction ceiling tighter than
+the PHP-side budget, but the PHP budget is the *outer* guarantee
+that *something* will throw, even if FDB's own retries were
+disabled or exhausted.
+
+### Clearing the ceilings
+
+`FoundationDB::reset()` clears both ceilings back to `0` (along
+with the API version and database cache) — useful for tests that
+mutate retry policy and need to leave the process in a clean state.
+
