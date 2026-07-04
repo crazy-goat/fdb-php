@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Option;
 
+use CrazyGoat\FoundationDB\KeyValueLimits;
 use CrazyGoat\FoundationDB\NativeClient;
 
 final readonly class NetworkOptions
@@ -248,11 +249,17 @@ final readonly class NetworkOptions
 
     private function setOption(int $code, ?string $value = null): void
     {
+        if ($value !== null) {
+            $valueLength = KeyValueLimits::assertValidFfiLength($value, 'Network option value');
+        } else {
+            $valueLength = 0;
+        }
+
         $this->client->checkError(
             $this->client->fdb->fdb_network_set_option(
                 $code,
                 $value,
-                $value !== null ? strlen($value) : 0,
+                $valueLength,
             ),
         );
     }

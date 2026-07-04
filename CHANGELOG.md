@@ -3,6 +3,24 @@
 ## [Unreleased]
 
 ### Fixed
+- [#48] FoundationDB key/value lengths now checked at the PHP trust boundary
+  with explicit, named exceptions instead of an unchecked `strlen()` flowing
+  straight into a C `int` FFI parameter. New `KeyValueLimits::assertValidKey()` /
+  `assertValidValue()` / `assertValidRangeEndpoint()` / `assertValidFfiLength()`
+  enforce:
+  - keys may not be empty and may not exceed 10,000 bytes (FDB limit, code 2102);
+  - values may not exceed 100,000 bytes (FDB limit, code 2103);
+  - any byte string crossing the FFI surface may not exceed 2,147,483,647 bytes
+    (the signed 32-bit boundary of libfdb_c's length parameters; the previous
+    code would have silently truncated a `> 2 GB` payload before libfdb_c could
+    see it).
+  Violations throw `\InvalidArgumentException` immediately at the call site
+  (`set()`, `clear()`, `clearRange()`, `atomicOp()`, `watch()`, `get()`,
+  `getRange()`, `getKey()`, `addReadConflictRange()`, `addWriteConflictRange()`,
+  `setOption()`) so the application sees the failure with the offending length
+  rather than as an opaque code on `commit()`. The PHP-side guard does not
+  change the transaction-size aggregation limit, which `libfdb_c` continues
+  to enforce on commit (code 2101).
 - [#37] AdminClient::listTenants: end-key for tenant range scan now uses
   `KeyUtil::strinc(self::TENANT_MAP_PREFIX)` instead of a single-quoted `'\xff'` literal.
   The old code silently returned an incomplete tenant list because single-quoted `'\xff'`

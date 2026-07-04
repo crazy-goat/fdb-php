@@ -91,4 +91,22 @@ Programming errors (e.g., using closed database, using partition as subspace).
 
 ### InvalidArgumentException
 
-Invalid parameters (e.g., empty directory path).
+Invalid parameters at the FFI trust boundary. Thrown eagerly by:
+
+- every write (`set`, `clear`, `clearRange`, `atomicOp`, `watch`) — when the
+  key/value length exceeds the FoundationDB size limits
+  (key ≤ 10,000 bytes, value ≤ 100,000 bytes);
+- every read (`get`, `getKey`, `getRange`, `getAddressesForKey`,
+  `getEstimatedRangeSizeBytes`, `getRangeSplitPoints`) — when the key or
+  range-endpoint length exceeds the FDB key size limit;
+- every option setters (`Transaction::setOption`,
+  `Database::setOption`, `NetworkOptions::set*`) and the tenant/server
+  identifiers — when the byte string would not fit in libfdb_c's 32-bit
+  `int` length parameter.
+
+The exception is thrown at the call site rather than on `commit()`, so
+applications get a stack trace at the offending line with the actual length
+that failed validation. `transact()` does not retry these exceptions —
+they are treated as programmer errors, not transient conflicts.
+
+See `KeyValueLimits` for the precise constants and the FFI 32-bit guard.

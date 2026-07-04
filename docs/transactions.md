@@ -367,3 +367,52 @@ Common error codes you might encounter:
 | 1031 | `future_released` | Future was released before completion |
 
 The `transact()` and `readTransact()` methods handle retryable errors automatically. For manual transactions, use `$tr->onError($code)->await()` to implement proper retry backoff.
+
+---
+
+## Key / Value Size Limits
+
+FoundationDB enforces hard limits on the bytes you can store, and the PHP client validates them up front so failures happen at the call site instead of as an opaque error on `commit()`.
+
+### Limits
+
+| Payload                 | Limit                  | FDB error code |
+|-------------------------|------------------------|----------------|
+| Key (read or write)     | 10,000 bytes (10 KB)   | 2102           |
+| Value                   | 100,000 bytes (100 KB) | 2103           |
+| Aggregated transaction  | 10,000,000 bytes (10 MB) by default | 2101 |
+
+The transaction-size limit is aggregate and is still reported by `libfdb_c` on `commit()` (PHP-side does not pre-compute the running total). Key and value limits are checked on every call so you get them at the offending line rather than at the end of the retry loop.
+
+### Behaviour
+
+```php
+use CrazyGoat\FoundationDB\KeyValueLimits;
+
+assert(KeyValueLimits::MAX_KEY_SIZE === 10_000);
+assert(KeyValueLimits::MAX_VALUE_SIZE === 100_000);
+assert(KeyValueLimits::MAX_FFI_LENGTH === 2_147_483_647);
+```
+
+An oversize write throws `\InvalidArgumentException` immediately, with the expected length and the limit in the message:
+
+```php
+$oversize = str_repeat('a', 10_001);
+
+try {
+    $tr->set($oversize, 'value');
+} catch (\InvalidArgumentException $e) {
+    // "FoundationDB key exceeds maximum size: 10001 bytes (limit is 10000 bytes)"
+}
+```
+
+The same applies to `clear()`, `clearRange()`, `atomicOp()`, `watch()`, `get()`, `getKey()`, `getRange()`, `addReadConflictRange()`, `addWriteConflictRange()` and `setOption()`.
+
+> **Note**: `transact()` retries on `FDBException` only. A guard rejection is treated as a programmer error, not a transient conflict, so it propagates out of `transact()` immediately — the retry loop will not silently re-attempt an oversize write.
+
+### Why pre-flight
+
+`libfdb_c`'s length parameters are 32-bit `int`; PHP `strlen()` is 64-bit. Pre-validation
+keeps a `> 2 GB` payload from silently truncating at the C boundary. The defensive
+FFI guard (`KeyValueLimits::MAX_FFI_LENGTH`) fires only for pathological inputs —
+every realistic FoundationDB payload is well below it.
