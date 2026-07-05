@@ -174,6 +174,9 @@ final class NativeClient
 
     private ?CData $networkThread = null;
 
+    /** @var \FFI\CData|null Handle returned by dlopen('libfdb_c.so'), closed in stopNetwork(). */
+    private ?CData $fdbLibraryHandle = null;
+
     private function __construct()
     {
         $this->fdb = FFI::cdef(self::FDB_HEADER, 'libfdb_c.so');
@@ -221,6 +224,7 @@ final class NativeClient
         if ($fdbHandle === null || FFI::isNull($fdbHandle)) {
             throw new \RuntimeException('Failed to dlopen libfdb_c.so: ' . FFI::string($this->libdl->dlerror()));
         }
+        $this->fdbLibraryHandle = $fdbHandle;
 
         $runNetworkPtr = $this->libdl->dlsym($fdbHandle, 'fdb_run_network');
         if ($runNetworkPtr === null || FFI::isNull($runNetworkPtr)) {
@@ -253,12 +257,22 @@ final class NativeClient
             return;
         }
 
+        // Close all tracked databases before stopping the network
+        // to ensure fdb_database_destroy() runs before fdb_stop_network().
+        FoundationDB::closeAllDatabases();
+
         FoundationDB::reset();
 
         $this->fdb->fdb_stop_network();
 
         if ($this->networkThread instanceof \FFI\CData) {
             $this->pthread->pthread_join($this->networkThread->cdata, null);
+        }
+
+        // Close the dlopen'd handle now that fdb_run_network has completed.
+        if ($this->fdbLibraryHandle instanceof \FFI\CData && !FFI::isNull($this->fdbLibraryHandle)) {
+            $this->libdl->dlclose($this->fdbLibraryHandle);
+            $this->fdbLibraryHandle = null;
         }
 
         $this->networkStarted = false;

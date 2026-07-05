@@ -133,8 +133,8 @@ final class Database implements Transactor, ReadTransactor
     public function clearAll(): void
     {
         $this->transact(function (Transaction $tr): void {
-            // Clear entire keyspace from \x00 to \xFF
-            $tr->clearRange("\x00", "\xFF");
+            // Clear entire keyspace from "" (zero-length key) to \xFF
+            $tr->clearRange("", "\xFF");
         });
     }
 
