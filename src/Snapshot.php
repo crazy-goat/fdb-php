@@ -12,6 +12,13 @@ final class Snapshot extends ReadTransaction implements ReadTransactor
         CData $tpointer,
         Database $db,
         NativeClient $client,
+        /**
+         * GC anchor: keeps the parent Transaction alive as long as the Snapshot exists.
+         * The Snapshot shares the same native transaction handle (tpointer) as its parent,
+         * so we must prevent the parent from being garbage-collected prematurely.
+         *
+         * @phpstan-ignore property.onlyWritten
+         */
         private readonly Transaction $parentTransaction,
     ) {
         parent::__construct($tpointer, $db, $client, true);

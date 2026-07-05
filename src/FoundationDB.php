@@ -126,6 +126,15 @@ final class FoundationDB
     }
 
     /** @internal */
+    public static function closeAllDatabases(): void
+    {
+        foreach (self::$databases as $database) {
+            $database->close();
+        }
+        self::$databases = [];
+    }
+
+    /** @internal */
     public static function reset(): void
     {
         self::$apiVersion = null;
