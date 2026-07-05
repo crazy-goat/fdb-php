@@ -248,6 +248,67 @@ final class RangeReadTest extends TestCase
     }
 
     #[Test]
+    public function getRangeReversePaginationYieldsEachKeyOnce(): void
+    {
+        // Write enough keys with non-trivial values to force the server to
+        // return multiple pages — a regression that returned the boundary key
+        // of each page in the next page would surface here.
+        $count = 1000;
+        $this->getDatabase()->transact(function (Transaction $tr) use ($count): void {
+            for ($i = 0; $i < $count; $i++) {
+                $tr->set(
+                    sprintf('range_test/reverse/%04d', $i),
+                    str_pad((string) $i, 32, 'x'),
+                );
+            }
+        });
+
+        $result = $this->getDatabase()->getRangeStartsWith(
+            'range_test/reverse/',
+            new RangeOptions(reverse: true),
+        );
+
+        self::assertCount($count, $result);
+        self::assertSame('range_test/reverse/0999', $result[0]->key);
+        self::assertSame('range_test/reverse/0000', $result[$count - 1]->key);
+
+        $keys = array_map(static fn (KeyValue $kv): string => $kv->key, $result);
+        self::assertSame($keys, array_unique($keys), 'reverse iteration must not yield duplicates');
+
+        $expected = [];
+        for ($i = $count - 1; $i >= 0; $i--) {
+            $expected[] = sprintf('range_test/reverse/%04d', $i);
+        }
+        self::assertSame($expected, $keys);
+    }
+
+    #[Test]
+    public function getRangeReversePaginationWithLimitAcrossBatches(): void
+    {
+        $total = 1000;
+        $limit = 750;
+        $this->getDatabase()->transact(function (Transaction $tr) use ($total): void {
+            for ($i = 0; $i < $total; $i++) {
+                $tr->set(
+                    sprintf('range_test/reverse_limited/%04d', $i),
+                    str_pad((string) $i, 32, 'x'),
+                );
+            }
+        });
+
+        $result = $this->getDatabase()->getRangeStartsWith(
+            'range_test/reverse_limited/',
+            new RangeOptions(limit: $limit, reverse: true),
+        );
+
+        $keys = array_map(static fn (KeyValue $kv): string => $kv->key, $result);
+        self::assertCount($limit, $keys);
+        self::assertSame($keys, array_unique($keys), 'reverse iteration must not yield duplicates');
+        self::assertSame(sprintf('range_test/reverse_limited/%04d', $total - 1), $keys[0]);
+        self::assertSame(sprintf('range_test/reverse_limited/%04d', $total - $limit), $keys[$limit - 1]);
+    }
+
+    #[Test]
     public function getRangeWithStreamingModeExact(): void
     {
         $this->getDatabase()->set('range_test/exact/a', '1');

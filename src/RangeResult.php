@@ -69,8 +69,12 @@ final readonly class RangeResult implements \IteratorAggregate
 
             $lastKey = $kvs[$count - 1]->key;
 
+            // In reverse iteration $lastKey was the lowest key we already yielded,
+            // so the next batch must step past it to avoid re-yielding it.
+            // In forward iteration $lastKey was the highest key we already yielded,
+            // so the next batch starts just above it.
             if ($reverse) {
-                $endSelector = KeySelector::firstGreaterOrEqual($lastKey);
+                $endSelector = KeySelector::firstGreaterThan($lastKey);
             } else {
                 $beginSelector = KeySelector::firstGreaterThan($lastKey);
             }
