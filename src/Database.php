@@ -357,14 +357,32 @@ final class Database implements Transactor, ReadTransactor
         return $busyness;
     }
 
-    public function getClientStatus(): string
+    /**
+     * Get the client status of the database.
+     *
+     * @param bool $asArray When true, returns the decoded status as an associative array,
+     *                      matching the return type of AdminClient::getClusterStatus().
+     * @return ($asArray is true ? array<string, mixed> : string)
+     * @throws FDBException If status retrieval fails
+     * @throws \JsonException If $asArray is true and the status JSON cannot be decoded
+     */
+    public function getClientStatus(bool $asArray = false): string|array
     {
         $future = new Future\FutureKey(
             $this->client->fdb->fdb_database_get_client_status($this->dpointer),
             $this->client,
         );
 
-        return $future->await();
+        $status = $future->await();
+
+        if ($asArray) {
+            /** @var array<string, mixed> $decoded */
+            $decoded = json_decode($status, true, 512, JSON_THROW_ON_ERROR);
+
+            return $decoded;
+        }
+
+        return $status;
     }
 
     /**

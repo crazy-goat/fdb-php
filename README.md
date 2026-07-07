@@ -299,6 +299,7 @@ $readable = KeyUtil::printable("\x00\x01\xFF");  // '\x00\x01\xff'
 ```php
 $busyness = $db->getMainThreadBusyness(); // 0.0 to 1.0
 $status = $db->getClientStatus();          // JSON string
+$statusArray = $db->getClientStatus(asArray: true); // parsed array, consistent with AdminClient::getClusterStatus()
 ```
 
 ### Locality API

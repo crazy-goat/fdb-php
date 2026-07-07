@@ -40,9 +40,8 @@ final class RebootWorkerTest extends TestCase
         $db = $this->getDatabase();
 
         // Get cluster status to find a storage node address
-        $status = $db->getClientStatus();
         /** @var array<string, mixed> $statusData */
-        $statusData = json_decode($status, true);
+        $statusData = $db->getClientStatus(asArray: true);
 
         // Find a storage node address from the status
         $storageAddress = null;

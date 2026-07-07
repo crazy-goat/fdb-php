@@ -28,4 +28,12 @@ final class DatabaseMonitoringTest extends TestCase
         $decoded = json_decode($status, true);
         self::assertIsArray($decoded);
     }
+
+    #[Test]
+    public function getClientStatusCanReturnParsedArray(): void
+    {
+        $status = $this->getDatabase()->getClientStatus(asArray: true);
+
+        self::assertNotEmpty($status);
+    }
 }
