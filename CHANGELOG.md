@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Fixed
+- [#73] Reverse range iteration (`getRange` / `getRangeAll` with `reverse: true`)
+  now has regression coverage guaranteeing every key is yielded exactly once.
+  No change to pagination behavior was required: the reverse branch already
+  advances the end selector with `KeySelector::firstGreaterOrEqual($lastKey)`,
+  which correctly excludes the already-yielded boundary key. A proposed
+  `firstGreaterThan($lastKey)` change was verified against a live cluster to
+  cause an infinite loop (the boundary key is returned forever), so it was
+  deliberately not applied. Unit coverage lives in `tests/Unit/RangeResultTest.php`
+  and end-to-end coverage in `tests/Integration/ReversePaginationTest.php`
+  (1000 keys iterated across server batches in both directions).
 - [#41] `DirectoryLayer::create()` now validates a caller-supplied
   `prefix` argument before writing anything. Three explicit checks were
   added (and unit + integration tests cover all of them):

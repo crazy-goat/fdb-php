@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use Closure;
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureKeyValueArray;
+use CrazyGoat\FoundationDB\Future\FutureKvResult;
 
 /** @implements \IteratorAggregate<int, KeyValue> */
 final readonly class RangeResult implements \IteratorAggregate
@@ -25,11 +27,37 @@ final readonly class RangeResult implements \IteratorAggregate
      */
     public function getIterator(): \Generator
     {
-        $beginSelector = $this->beginSelector;
-        $endSelector = $this->endSelector;
-        $limit = $this->options->limit;
-        $reverse = $this->options->reverse;
-        $mode = $this->options->mode;
+        yield from self::paginate(
+            $this->beginSelector,
+            $this->endSelector,
+            $this->options,
+            fn (
+                KeySelector $begin,
+                KeySelector $end,
+                int $limit,
+                StreamingMode $mode,
+                int $iteration,
+                bool $reverse,
+            ): FutureKvResult => $this->getRangeRaw($begin, $end, $limit, $mode, $iteration, $reverse)->await(),
+        );
+    }
+
+    /**
+     * Iterates a range across server batches, advancing the (exclusive) endpoint
+     * strictly past the last key of the previous batch so that no key is yielded twice.
+     *
+     * @param Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): FutureKvResult $fetcher
+     * @return \Generator<int, KeyValue>
+     */
+    public static function paginate(
+        KeySelector $beginSelector,
+        KeySelector $endSelector,
+        RangeOptions $options,
+        Closure $fetcher,
+    ): \Generator {
+        $limit = $options->limit;
+        $reverse = $options->reverse;
+        $mode = $options->mode;
         $iteration = 1;
         $fetched = 0;
 
@@ -41,16 +69,7 @@ final readonly class RangeResult implements \IteratorAggregate
         while (true) {
             $currentLimit = $limit !== null ? $limit - $fetched : 0;
 
-            $future = $this->getRangeRaw(
-                $beginSelector,
-                $endSelector,
-                $currentLimit,
-                $mode,
-                $iteration,
-                $reverse,
-            );
-
-            $result = $future->await();
+            $result = $fetcher($beginSelector, $endSelector, $currentLimit, $mode, $iteration, $reverse);
             $kvs = $result->kvs;
             $count = $result->count;
 
