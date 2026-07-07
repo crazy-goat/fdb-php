@@ -131,3 +131,13 @@
   `\InvalidArgumentException` immediately at the offending call;
   wire bytes that round-trip just at the limit are still accepted,
   so legitimate deeply-nested user data is unaffected.
+
+### Added
+- [#71] `Database::getClientStatus()` now accepts an optional `bool $asArray = false`
+  parameter. When `true`, it returns the decoded status as an
+  `array<string, mixed>`, making its return type consistent with
+  `AdminClient::getClusterStatus()`. The default (`false`) preserves the
+  previous raw-JSON-string return type, so the change is fully
+  backward-compatible. `tests/Integration/DatabaseMonitoringTest.php` adds a
+  test asserting the parsed array form, and `tests/Integration/RebootWorkerTest.php`
+  now consumes the array form directly instead of manually decoding JSON.

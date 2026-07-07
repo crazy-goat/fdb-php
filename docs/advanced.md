@@ -52,6 +52,9 @@ echo "Thread busyness: " . round($busyness * 100, 1) . "%\n";
 // Client status (JSON string)
 $statusJson = $db->getClientStatus();
 $status = json_decode($statusJson, true);
+
+// Or get the parsed array directly (consistent with AdminClient::getClusterStatus())
+$status = $db->getClientStatus(asArray: true);
 ```
 
 ## Connection Strings
