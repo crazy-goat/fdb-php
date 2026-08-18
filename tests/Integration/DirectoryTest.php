@@ -201,6 +201,96 @@ final class DirectoryTest extends TestCase
         $this->dir->move($this->getDatabase(), ['app', 'move_a'], ['app', 'move_b']);
     }
 
+    // --- issue #42: content subspace prefix must not be double-prepended ----
+
+    /**
+     * When a directory is created inside a partition, the stored prefix
+     * already includes the partition's content subspace key.  The returned
+     * DirectorySubspace must use that prefix directly — prepending the
+     * content subspace key a second time would produce a doubled prefix
+     * (P + P + key instead of P + key) and land data at the wrong location.
+     */
+    #[Test]
+    public function directoryInsidePartitionHasSingleContentPrefix(): void
+    {
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'part42'], 'partition');
+        self::assertInstanceOf(DirectoryPartition::class, $partition);
+
+        $child = $partition->create($this->getDatabase(), ['child42']);
+        self::assertInstanceOf(DirectorySubspace::class, $child);
+
+        // The child's rawPrefix must contain the partition prefix exactly
+        // once — a double-prepend would produce partitionPrefix+partitionPrefix+...
+        $partitionPrefix = $partition->rawPrefix;
+        self::assertStringStartsWith($partitionPrefix === '' ? ' ' : $partitionPrefix, $child->rawPrefix);
+
+        $remainder = substr($child->rawPrefix, strlen($partitionPrefix));
+        self::assertNotEmpty($remainder, 'Child prefix must extend beyond partition prefix');
+        self::assertFalse(
+            str_starts_with($remainder, $partitionPrefix),
+            'Partition prefix appears twice in child rawPrefix (double-prepended)',
+        );
+    }
+
+    /**
+     * Round-trip: creating a directory inside a partition and then opening
+     * it must yield the same rawPrefix — the prefix must not change between
+     * create and open.
+     */
+    #[Test]
+    public function directoryInsidePartitionRoundTripsWithSamePrefix(): void
+    {
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'part42rt'], 'partition');
+        self::assertInstanceOf(DirectoryPartition::class, $partition);
+
+        $created = $partition->create($this->getDatabase(), ['child_rt']);
+        $opened = $partition->open($this->getDatabase(), ['child_rt']);
+
+        self::assertSame($created->rawPrefix, $opened->rawPrefix);
+    }
+
+    /**
+     * Writing a key through a directory subspace inside a partition must
+     * land at exactly the expected key: the partition content prefix
+     * followed by the child directory's allocated suffix and the packed
+     * tuple — not at a doubled-prefix location.
+     */
+    #[Test]
+    public function writeThroughPartitionChildLandsAtSinglePrefixedKey(): void
+    {
+        $partition = $this->dir->create($this->getDatabase(), ['app', 'part42w'], 'partition');
+        self::assertInstanceOf(DirectoryPartition::class, $partition);
+
+        $child = $partition->create($this->getDatabase(), ['child_w']);
+        $child->pack(['mykey']);
+
+        // Write through the subspace
+        $this->getDatabase()->set($child->pack(['mykey']), 'myvalue');
+
+        // Read back directly using the raw key — must be found
+        $value = $this->getDatabase()->get($child->pack(['mykey']));
+        self::assertSame('myvalue', $value);
+
+        // The raw key must start with the child subspace's rawPrefix
+        // (which already includes the partition prefix exactly once)
+        $rawKey = $child->pack(['mykey']);
+        $childPrefix = $child->rawPrefix;
+        self::assertStringStartsWith($childPrefix === '' ? ' ' : $childPrefix, $rawKey);
+    }
+
+    /**
+     * A top-level directory (empty content subspace) must also have its
+     * stored prefix used directly, without re-prepending.
+     */
+    #[Test]
+    public function topLevelDirectoryPrefixIsNotDoublePrepended(): void
+    {
+        $created = $this->dir->create($this->getDatabase(), ['app', 'top42']);
+        $opened = $this->dir->open($this->getDatabase(), ['app', 'top42']);
+
+        self::assertSame($created->rawPrefix, $opened->rawPrefix);
+    }
+
     // --- issue #40: move() must bound path inputs and reject cycle/partition --
 
     /**

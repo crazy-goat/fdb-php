@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Fixed
+- [#42] `DirectoryLayer` no longer double-prepends the content subspace
+  key when constructing a returned `DirectorySubspace`. The prefix stored
+  in a directory node already includes the content subspace key
+  (`createInternal` composes `contentSubspace->key() . $allocatedPrefix`),
+  but `contentsOfNode()`, `createInternal()`, and `removeInternal()`
+  prepended it again. For the default (empty) content subspace this was
+  harmless; inside a partition it produced a doubled prefix
+  (P + P + key instead of P + key), landing directories at the wrong
+  location and breaking cross-binding interop. Unit tests in
+  `tests/Unit/DirectoryDoublePrefixTest.php` and functional tests in
+  `tests/Integration/DirectoryTest.php` cover both the empty and
+  non-empty content subspace cases.
 - [#73] Reverse range iteration (`getRange` / `getRangeAll` with `reverse: true`)
   now has regression coverage guaranteeing every key is yielded exactly once.
   No change to pagination behavior was required: the reverse branch already

@@ -398,7 +398,7 @@ final readonly class DirectoryLayer
         }
 
         return new DirectorySubspace(
-            $this->contentSubspace->key() . $prefix,
+            $prefix,
             $path,
             $layer,
             $this,
@@ -479,7 +479,7 @@ final readonly class DirectoryLayer
         }
 
         return new DirectorySubspace(
-            $this->contentSubspace->key() . $prefix,
+            $prefix,
             $path,
             $layer,
             $this,
@@ -523,7 +523,7 @@ final readonly class DirectoryLayer
 
         $prefix = $this->getNodePrefix($node);
 
-        $tr->clearRangeStartsWith($this->contentSubspace->key() . $prefix);
+        $tr->clearRangeStartsWith($prefix);
         $tr->clearRangeStartsWith($node->key());
     }
 
