@@ -3,6 +3,44 @@
 ## [Unreleased]
 
 ### Fixed
+- [#52] `Database::transact()`, `Database::readTransact()`, and the four
+  `watch*` helpers (`watch`, `getAndWatch`, `setAndWatch`,
+  `clearAndWatch`) were unbounded `while (true)` loops that relied
+  entirely on `fdb_transaction_on_error()` to eventually surface a
+  non-retryable error. A persistently conflicting workload could
+  therefore spin indefinitely under the default. The fix introduces
+  an opt-in, process-wide ceiling enforced by a bounded retry loop,
+  `Database::runWithRetry()`, that throws a new
+  `CrazyGoat\FoundationDB\TransactionRetryLimitExceededException`
+  when the configured ceiling is hit:
+
+  | Knob                                            | Default | On violation                                          |
+  |-------------------------------------------------|---------|-------------------------------------------------------|
+  | `FoundationDB::defaultTransactionRetryLimit(int)`  | `0` (unbounded) | `\InvalidArgumentException` for `< 0`, otherwise the loop throws `TransactionRetryLimitExceededException` after N retries. |
+  | `FoundationDB::defaultTransactionTimeoutSeconds(float)` | `0.0` (unbounded) | `\InvalidArgumentException` for `< 0.0`, otherwise the loop throws when wall-clock budget is exhausted. |
+
+  Both ceilings default to `0` ("unbounded"), preserving the
+  historical `while (true)` semantics for users who do not opt in.
+  Setting either or both to a positive value bounds the loop
+  deterministically. The exception carries the actual attempt count
+  and elapsed wall-clock seconds, so the application knows whether
+  it tripped on the attempt-count or the wall-clock ceiling and can
+  surface that to operators (the exception message distinguishes
+  the two). The pure predicate `Database::checkRetryLimit()` is
+  exposed so the bounded-retry decision can be exercised in unit
+  tests without FFI. The class-level doc-block on
+  `TransactionRetryLimitExceededException` documents the new
+  contract; `docs/transactions.md` adds a "Bounded retry"
+  section explaining the configuration surface and how it differs
+  from FDB's own per-transaction `MAX_RETRY_DELAY` / `RETRY_LIMIT`
+  options; the unit-test coverage is in
+  `tests/Unit/TransactionRetryLimitTest.php` (28 cases covering the
+  predicate, configuration validation, exception fields, default
+  message pluralization, etc.); the wired-up behaviour against a
+  live FDB cluster is covered by
+  `tests/Integration/TransactionRetryLimitTest.php` (6 cases
+  covering `transact`, `readTransact`, `watch`, default-unbounded,
+  wall-clock timeout, and `FoundationDB::reset()` clearing).
 - [#73] Reverse range iteration (`getRange` / `getRangeAll` with `reverse: true`)
   now has regression coverage guaranteeing every key is yielded exactly once.
   No change to pagination behavior was required: the reverse branch already

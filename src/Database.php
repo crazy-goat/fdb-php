@@ -61,33 +61,53 @@ final class Database implements Transactor, ReadTransactor
         return new Tenant($tpointer, $this, $this->client);
     }
 
+    /**
+     * @template T
+     *
+     * Execute `$fn` inside a writable transaction and commit,
+     * retrying on retryable `FDBException`s. The retry loop is
+     * bounded by the process-wide `FoundationDB::defaultTransactionRetryLimit()`
+     * and `FoundationDB::defaultTransactionTimeoutSeconds()`.
+     *
+     * When neither is set (the default), the loop is unbounded and
+     * relies entirely on `fdb_transaction_on_error()` to eventually
+     * surface a non-retryable error. When either ceiling is reached,
+     * `TransactionRetryLimitExceededException` is thrown
+     * synchronously — see issue #52.
+     *
+     * @param callable(Transaction): T $fn
+     *
+     * @return T
+     */
     public function transact(callable $fn): mixed
     {
-        $tr = $this->createTransaction();
-
-        while (true) {
-            try {
+        return $this->runWithRetry(
+            function (Transaction $tr) use ($fn): mixed {
                 $result = $fn($tr);
                 $tr->commit()->await();
 
                 return $result;
-            } catch (FDBException $e) {
-                $tr->onError($e->fdbCode)->await();
-            }
-        }
+            },
+        );
     }
 
+    /**
+     * Read-only variant of `transact()`; uses the snapshot view so
+     * the loop never commits and therefore cannot write to the
+     * cluster. Bounded by the same retry-limit / timeout settings as
+     * `transact()`.
+     *
+     * @template T
+     *
+     * @param callable(Snapshot): T $fn
+     *
+     * @return T
+     */
     public function readTransact(callable $fn): mixed
     {
-        $tr = $this->createTransaction();
+        $writeCall = (static fn (Transaction $tr) => $fn($tr->snapshot()));
 
-        while (true) {
-            try {
-                return $fn($tr->snapshot());
-            } catch (FDBException $e) {
-                $tr->onError($e->fdbCode)->await();
-            }
-        }
+        return $this->runWithRetry($writeCall);
     }
 
     public function get(string|KeyConvertible $key): ?string
@@ -200,18 +220,14 @@ final class Database implements Transactor, ReadTransactor
 
     public function watch(string $key): FutureVoid
     {
-        $tr = $this->createTransaction();
-
-        while (true) {
-            try {
+        return $this->runWithRetry(
+            function (Transaction $tr) use ($key): FutureVoid {
                 $watchFuture = $tr->watch($key);
                 $tr->commit()->await();
 
                 return $watchFuture;
-            } catch (FDBException $e) {
-                $tr->onError($e->fdbCode)->await();
-            }
-        }
+            },
+        );
     }
 
     /**
@@ -219,53 +235,41 @@ final class Database implements Transactor, ReadTransactor
      */
     public function getAndWatch(string $key): array
     {
-        $tr = $this->createTransaction();
-
-        while (true) {
-            try {
+        return $this->runWithRetry(
+            function (Transaction $tr) use ($key): array {
                 $value = $tr->get($key)->await();
                 $watchFuture = $tr->watch($key);
                 $tr->commit()->await();
 
                 return [$value, $watchFuture];
-            } catch (FDBException $e) {
-                $tr->onError($e->fdbCode)->await();
-            }
-        }
+            },
+        );
     }
 
     public function setAndWatch(string $key, string $value): FutureVoid
     {
-        $tr = $this->createTransaction();
-
-        while (true) {
-            try {
+        return $this->runWithRetry(
+            function (Transaction $tr) use ($key, $value): FutureVoid {
                 $tr->set($key, $value);
                 $watchFuture = $tr->watch($key);
                 $tr->commit()->await();
 
                 return $watchFuture;
-            } catch (FDBException $e) {
-                $tr->onError($e->fdbCode)->await();
-            }
-        }
+            },
+        );
     }
 
     public function clearAndWatch(string $key): FutureVoid
     {
-        $tr = $this->createTransaction();
-
-        while (true) {
-            try {
+        return $this->runWithRetry(
+            function (Transaction $tr) use ($key): FutureVoid {
                 $tr->clear($key);
                 $watchFuture = $tr->watch($key);
                 $tr->commit()->await();
 
                 return $watchFuture;
-            } catch (FDBException $e) {
-                $tr->onError($e->fdbCode)->await();
-            }
-        }
+            },
+        );
     }
 
     /**
@@ -454,6 +458,146 @@ final class Database implements Transactor, ReadTransactor
     {
         if ($this->closed) {
             throw new \LogicException('Database has been closed');
+        }
+    }
+
+    /**
+     * Pure ceiling predicate used by `runWithRetry()`. Exposed as
+     * `public static` with no FFI side-effects so it can be exercised
+     * by unit tests without a live FoundationDB cluster.
+     *
+     * Returns `null` if the retry attempt is still within both
+     * configured ceilings, or a fully populated
+     * `TransactionRetryLimitExceededException` describing the
+     * boundary that was crossed (which the caller is responsible for
+     * `throw`ing). Walls-clock ceiling beats attempt ceiling when
+     * both are configured and both are exceeded on the same attempt
+     * — `elapsed` is checked first so the diagnostic reports the
+     * boundary that will actually cause the application to stop.
+     *
+     * Conventions:
+     *  - `$maxRetries === 0` means "no attempt ceiling configured".
+     *  - `$maxSeconds === 0.0` means "no time ceiling configured".
+     *  - `$retriesSoFar` is the number of `on_error().await()`
+     *    retries that have already happened for the current
+     *    transaction. The initial attempt is not counted. This
+     *    matches the FDB Java binding's `Transaction.RETRY_LIMIT`
+     *    semantics, where the limit bounds the number of retries,
+     *    not the total number of attempts.
+     *
+     * @param int            $retriesSoFar Number of `on_error()` retries already consumed.
+     * @param float          $elapsed      Wall-clock seconds since the loop started.
+     * @param int            $maxRetries   Configured attempt ceiling (0 == unlimited).
+     * @param float          $maxSeconds   Configured wall-clock ceiling in seconds (0.0 == unlimited).
+     *
+     * @return TransactionRetryLimitExceededException|null null if `runWithRetry` should keep going.
+     */
+    public static function checkRetryLimit(
+        int $retriesSoFar,
+        float $elapsed,
+        int $maxRetries,
+        float $maxSeconds,
+    ): ?TransactionRetryLimitExceededException {
+        if ($maxSeconds > 0.0 && $elapsed > $maxSeconds) {
+            return new TransactionRetryLimitExceededException(
+                attempts: $retriesSoFar,
+                elapsedSeconds: $elapsed,
+                message: sprintf(
+                    'Transaction retry wall-clock limit exceeded after %d retry attempt%s '
+                    . '(%.3fs elapsed, limit %.3fs). Configure both limits via '
+                    . 'FoundationDB::defaultTransactionRetryLimit() / '
+                    . 'FoundationDB::defaultTransactionTimeoutSeconds().',
+                    $retriesSoFar,
+                    $retriesSoFar === 1 ? '' : 's',
+                    $elapsed,
+                    $maxSeconds,
+                ),
+            );
+        }
+
+        if ($maxRetries > 0 && $retriesSoFar > $maxRetries) {
+            return new TransactionRetryLimitExceededException(
+                attempts: $retriesSoFar,
+                elapsedSeconds: $elapsed,
+                message: sprintf(
+                    'Transaction retry attempt limit exceeded: %d retries '
+                    . '(limit %d). Configure via '
+                    . 'FoundationDB::defaultTransactionRetryLimit().',
+                    $retriesSoFar,
+                    $maxRetries,
+                ),
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Bounded retry loop shared by `transact()`, `readTransact()`,
+     * and the four `watch*` helpers. Replaces the original
+     * `while (true) { try { ...; commit; return } catch (FDBException) { onError } }`
+     * pattern with an explicit two-dimensional budget — attempt count
+     * and elapsed wall-clock seconds — that the application
+     * optionally configures via `FoundationDB::defaultTransactionRetryLimit()`
+     * and `FoundationDB::defaultTransactionTimeoutSeconds()`.
+     *
+     * Behaviour:
+     *
+     *  - The first attempt is `attempt = 1`. We only count attempts
+     *    that needed an `on_error()` retry toward the ceiling — the
+     *    initial attempt is free, matching the FDB Java binding's
+     *    convention where `RETRY_LIMIT` bounds the number of retries
+     *    after the initial try, not the total number of attempts.
+     *  - After every `on_error().await()` we (a) increment the retry
+     *    counter and (b) recompute elapsed time. If either configured
+     *    ceiling is exceeded we throw
+     *    `TransactionRetryLimitExceededException` synchronously via
+     *    `checkRetryLimit()`.
+     *  - When both ceilings are `0` (the default), the loop is
+     *    unbounded — preserving the historical "FDB decides when to
+     *    stop retrying" semantics for users who do not opt in.
+     *  - Native FDB errors that are still retryable bubble through
+     *    `on_error().await()` as before; the loop's only difference
+     *    is that we now stop when the configured ceiling is
+     *    reached.
+     *
+     * @template T
+     *
+     * @param callable(Transaction): T $fn
+     *
+     * @return T
+     */
+    private function runWithRetry(callable $fn): mixed
+    {
+        $maxRetries = FoundationDB::getDefaultTransactionRetryLimit();
+        $maxSeconds = FoundationDB::getDefaultTransactionTimeoutSeconds();
+        $deadlineTrackingEnabled = $maxRetries > 0 || $maxSeconds > 0.0;
+
+        $tr = $this->createTransaction();
+        $start = $deadlineTrackingEnabled ? microtime(true) : 0.0;
+        $retries = 0;
+
+        while (true) {
+            try {
+                return $fn($tr);
+            } catch (FDBException $e) {
+                if (!$deadlineTrackingEnabled) {
+                    // Historical behaviour: rely entirely on FDB's
+                    // on_error backoff. No local ceiling in effect.
+                    $tr->onError($e->fdbCode)->await();
+                    continue;
+                }
+
+                ++$retries;
+
+                $elapsed = microtime(true) - $start;
+                $limit = self::checkRetryLimit($retries, $elapsed, $maxRetries, $maxSeconds);
+                if ($limit instanceof \CrazyGoat\FoundationDB\TransactionRetryLimitExceededException) {
+                    throw $limit;
+                }
+
+                $tr->onError($e->fdbCode)->await();
+            }
         }
     }
 }
