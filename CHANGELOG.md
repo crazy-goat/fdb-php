@@ -3,6 +3,21 @@
 ## [Unreleased]
 
 ### Fixed
+- [#38] `Transaction::snapshot()` no longer caches the `Snapshot` on the
+  parent transaction. The cached instance closed a reference cycle
+  (`Transaction -> snapshotInstance -> Snapshot -> parentTransaction`) that
+  kept both objects alive by refcount, deferring
+  `fdb_transaction_destroy()` to the cycle collector — or to process
+  shutdown when `zend.enable_gc=0`. A long-running worker calling
+  `readTransact()`, directory operations (`HighContentionAllocator`), or
+  `Locality` therefore accumulated undestroyed native FDB transaction
+  handles. `snapshot()` now returns a fresh `Snapshot` per call; the
+  `Snapshot` still anchors its parent one-directionally, so the shared
+  native handle remains valid for the snapshot's lifetime and both are
+  freed deterministically on scope exit. Lifetime semantics are documented
+  in `docs/transactions.md`; unit coverage lives in
+  `tests/Unit/SnapshotLifetimeTest.php` and functional coverage in
+  `tests/Integration/TransactionLifecycleTest.php`.
 - [#73] Reverse range iteration (`getRange` / `getRangeAll` with `reverse: true`)
   now has regression coverage guaranteeing every key is yielded exactly once.
   No change to pagination behavior was required: the reverse branch already

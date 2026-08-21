@@ -15,8 +15,6 @@ use FFI\CData;
 
 final class Transaction extends ReadTransaction implements Transactor
 {
-    private ?Snapshot $snapshotInstance = null;
-
     public function __construct(
         CData $tpointer,
         Database $db,
@@ -315,7 +313,13 @@ final class Transaction extends ReadTransaction implements Transactor
 
     public function snapshot(): Snapshot
     {
-        return $this->snapshotInstance ??= new Snapshot($this->tpointer, $this->db, $this->client, $this);
+        // A fresh Snapshot is returned on every call. Snapshot holds a strong
+        // reference back to this Transaction to keep the shared native handle
+        // alive; caching it here as well would create a reference cycle
+        // (Transaction -> Snapshot -> Transaction) that defers
+        // fdb_transaction_destroy() to the cycle collector — or to process
+        // shutdown when zend.enable_gc is disabled (#38).
+        return new Snapshot($this->tpointer, $this->db, $this->client, $this);
     }
 
     public function transact(callable $fn): mixed
