@@ -6,6 +6,7 @@ namespace CrazyGoat\FoundationDB\Tests\Unit;
 
 use CrazyGoat\FoundationDB\Database;
 use CrazyGoat\FoundationDB\NativeClient;
+use CrazyGoat\FoundationDB\ReadTransaction;
 use CrazyGoat\FoundationDB\Transaction;
 use FFI;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
@@ -142,7 +143,11 @@ final class SnapshotLifetimeTest extends TestCase
 
     private function setProperty(object $object, string $name, mixed $value): void
     {
-        $property = new \ReflectionProperty($object, $name);
+        // Resolve the property against its declaring class: readonly
+        // properties may only be reflection-initialized from that scope,
+        // and on PHP < 8.4 a subclass scope (e.g. Transaction for props
+        // declared on ReadTransaction) is rejected.
+        $property = new \ReflectionProperty(ReadTransaction::class, $name);
         $property->setValue($object, $value);
     }
 
