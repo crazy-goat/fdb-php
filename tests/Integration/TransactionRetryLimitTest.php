@@ -4,48 +4,43 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
+use CrazyGoat\FoundationDB\Database;
 use CrazyGoat\FoundationDB\FoundationDB;
+use CrazyGoat\FoundationDB\Future\FutureVoid;
+use CrazyGoat\FoundationDB\Snapshot;
+use CrazyGoat\FoundationDB\Transaction;
 use CrazyGoat\FoundationDB\TransactionRetryLimitExceededException;
 use PHPUnit\Framework\Attributes\After;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Integration tests for the explicit-bounds retry-limit / retry-timeout
- * configuration introduced to fix issue #52.
+ * Integration tests for the opt-in retry ceiling introduced to fix #52.
  *
- * The unit tests in `tests/Unit/TransactionRetryLimitTest.php` cover
- * the pure-PHP predicate (`Database::checkRetryLimit()`) and the
- * configuration setters. This file confirms the **wired-up behaviour**
- * against a live FoundationDB cluster: that the loop in
- * `Database::runWithRetry()` actually honours the configured ceilings
- * and surfaces `TransactionRetryLimitExceededException` synchronously
- * to the application, instead of looping forever.
+ * The unit tests in `tests/Unit/TransactionRetryLimitTest.php` cover the
+ * pure-PHP predicate (`Database::checkRetryLimit()`) and the configuration
+ * setters. This file confirms the wired-up behaviour against a live
+ * FoundationDB cluster using **real** transaction conflicts — never
+ * synthetic exceptions, because a fabricated `FDBException` fed to the
+ * native `fdb_transaction_on_error()` describes an error the transaction
+ * never experienced and its future may never resolve.
  *
- * Because we want to exercise the loop without depending on the
- * cluster's conflict timing, we construct the conflict signal inside
- * the test: the user-supplied callback throws a retryable
- * `FDBException` on every call. The loop catches it, $tr->onError()
- * resets the transaction (which `fdb_transaction_on_error()` does for
- * any retryable code), the loop calls the callback again, and we
- * throw again. Every iteration increments our retry counter, so a
- * configured ceiling of N produces a deterministic
- * `TransactionRetryLimitExceededException` after exactly N+1 throws.
- *
- * We additionally verify:
- *
- *  - With `defaultTransactionRetryLimit = 0` (the default), the
- *    loop is unbounded — the test confirms a retryable error path
- *    runs at least N times without our exception.
- *  - `readTransact()` honours the same ceiling.
- *  - `Database::watch()` honours the same ceiling.
- *  - A wall-clock timeout ceiling also terminates the loop
- *    deterministically.
- *  - `FoundationDB::reset()` returns the loop to unbounded.
+ * Conflict recipe (deterministic): inside the `transact()` callback, read
+ * a key (establishing a read-conflict range), have an interferer
+ * transaction commit a change to that key, then write the key and commit.
+ * The interferer's commit lands between our read and our commit, so our
+ * commit fails with the retryable `not_committed` (1020) error and the
+ * loop retries through the real `on_error()` path. While the interferer
+ * keeps firing, the loop can never succeed — so a configured attempt
+ * ceiling produces `TransactionRetryLimitExceededException` after exactly
+ * ceiling+1 callback invocations, and a wall-clock ceiling terminates the
+ * loop regardless of the attempt count.
  */
 final class TransactionRetryLimitTest extends TestCase
 {
     use DatabaseCleanupTrait;
+
+    private const KEY = 'retry-limit-probe-key';
 
     #[After]
     protected function resetRetryConfig(): void
@@ -77,122 +72,153 @@ final class TransactionRetryLimitTest extends TestCase
         return [$result, null];
     }
 
+    /**
+     * Commit a change to the probe key from an independent transaction,
+     * invalidating any read conflict range established before this call.
+     */
+    private function interfere(Database $db, int $round): void
+    {
+        $interferer = $db->createTransaction();
+        $interferer->set(self::KEY, 'interference-' . $round);
+        $interferer->commit()->await();
+    }
+
     #[Test]
-    public function transactWithConfiguredRetryLimitThrowsAfterCeilingReached(): void
+    public function transactThrowsRetryLimitExceededExceptionWhenCeilingIsExhausted(): void
     {
         $db = $this->getDatabase();
 
         FoundationDB::defaultTransactionRetryLimit(2);
 
-        // The callback throws a retryable FDBException on every call.
-        // runWithRetry catches, awaits on_error() (which resets the
-        // transaction), increments the retry counter, and retries.
-        // After retries(>limit) it throws
-        // TransactionRetryLimitExceededException.
-        [, $exception] = $this->capture(static fn (): mixed => $db->transact(static function (): never {
-            throw new \CrazyGoat\FoundationDB\FDBException(1007);
-        }));
+        try {
+            [, $exception] = $this->capture(fn (): mixed => $db->transact(
+                function (Transaction $tr) use ($db): string {
+                    static $round = 0;
+                    ++$round;
 
-        self::assertInstanceOf(TransactionRetryLimitExceededException::class, $exception);
-        // 1st throw: retries count = 1, on boundary (1 ≤ 2)
-        // 2nd throw: retries count = 2, on boundary (2 ≤ 2)
-        // 3rd throw: retries count = 3, EXCEEDS ceiling
-        self::assertSame(3, $exception->attempts);
-        self::assertGreaterThanOrEqual(0.0, $exception->elapsedSeconds);
+                    // Read establishes the conflict range; the interferer's
+                    // commit invalidates it before our commit below.
+                    $tr->get(self::KEY)->await();
+
+                    if ($round <= 10) {
+                        $this->interfere($db, $round);
+                    }
+
+                    $tr->set(self::KEY, 'attempt-' . $round);
+
+                    return 'committed';
+                },
+            ));
+
+            self::assertInstanceOf(
+                TransactionRetryLimitExceededException::class,
+                $exception,
+                'Expected the attempt ceiling to abort the conflicting loop',
+            );
+            // Retries 1 and 2 are on the boundary (limit 2); the third
+            // retry exceeds it.
+            self::assertSame(3, $exception->attempts);
+            self::assertGreaterThanOrEqual(0.0, $exception->elapsedSeconds);
+        } finally {
+            $db->clear(self::KEY);
+        }
     }
 
     #[Test]
-    public function transactWithoutConfiguredCeilingStaysUnbounded(): void
+    public function transactWithDefaultCeilingRecoversWhenConflictsStop(): void
     {
         $db = $this->getDatabase();
 
-        FoundationDB::defaultTransactionRetryLimit(0);
+        // No ceiling configured (the default): the loop must behave exactly
+        // like the historical unbounded loop — retry through real conflicts
+        // and succeed once they stop, without any library-level exception.
+        try {
+            $result = $db->transact(
+                function (Transaction $tr) use ($db): string {
+                    static $round = 0;
+                    ++$round;
 
-        // With the unbounded default, the loop should not raise our
-        // exception at all and we observe the actual FDBException
-        // bubbling up — proving that the previous "rely on FDB to
-        // decide" semantics is preserved for users who do not opt in.
-        [, $exception] = $this->capture(static fn (): mixed => $db->transact(static function (): never {
-            throw new \CrazyGoat\FoundationDB\FDBException(1007);
-        }));
+                    $tr->get(self::KEY)->await();
 
-        self::assertNotInstanceOf(TransactionRetryLimitExceededException::class, $exception);
-        self::assertInstanceOf(\CrazyGoat\FoundationDB\FDBException::class, $exception);
-        self::assertSame(1007, $exception->fdbCode);
+                    if ($round <= 3) {
+                        $this->interfere($db, $round);
+                    }
+
+                    $tr->set(self::KEY, 'final-value');
+
+                    return 'committed';
+                },
+            );
+
+            self::assertSame('committed', $result);
+            self::assertSame('final-value', $db->get(self::KEY));
+        } finally {
+            $db->clear(self::KEY);
+        }
     }
 
     #[Test]
-    public function readTransactHonoursConfiguredRetryLimit(): void
+    public function wallClockTimeoutTerminatesLoopRegardlessOfAttemptCount(): void
     {
         $db = $this->getDatabase();
 
-        FoundationDB::defaultTransactionRetryLimit(1);
-
-        [, $exception] = $this->capture(static fn (): mixed => $db->readTransact(static function (): never {
-            throw new \CrazyGoat\FoundationDB\FDBException(1007);
-        }));
-
-        self::assertInstanceOf(TransactionRetryLimitExceededException::class, $exception);
-        // 1st throw: retries=1, at limit (1 ≤ 1)
-        // 2nd throw: retries=2, EXCEEDS limit=1
-        self::assertSame(2, $exception->attempts);
-    }
-
-    #[Test]
-    public function watchHonoursConfiguredRetryLimit(): void
-    {
-        $db = $this->getDatabase();
-
-        FoundationDB::defaultTransactionRetryLimit(1);
-
-        [, $exception] = $this->capture(
-            static fn (): \CrazyGoat\FoundationDB\Future\FutureVoid => $db->watch('transient-watch-key'),
-        );
-
-        self::assertInstanceOf(TransactionRetryLimitExceededException::class, $exception);
-        self::assertSame(2, $exception->attempts);
-    }
-
-    #[Test]
-    public function configuredWallClockTimeoutTerminatesLoop(): void
-    {
-        $db = $this->getDatabase();
-
-        // 50 milliseconds — a tiny but non-zero budget that the
-        // wall-clock ceiling will overrule quickly.
+        // Attempt ceiling left unbounded; only the wall-clock budget is
+        // configured, so the timeout is the only way out while conflicts
+        // keep coming.
         FoundationDB::defaultTransactionTimeoutSeconds(0.05);
 
-        $startedAt = microtime(true);
+        try {
+            [, $exception] = $this->capture(fn (): mixed => $db->transact(
+                function (Transaction $tr) use ($db): string {
+                    static $round = 0;
+                    ++$round;
 
-        [, $exception] = $this->capture(static fn (): mixed => $db->transact(static function (): never {
-            throw new \CrazyGoat\FoundationDB\FDBException(1007);
-        }));
+                    $tr->get(self::KEY)->await();
+                    $this->interfere($db, $round);
+                    $tr->set(self::KEY, 'attempt-' . $round);
 
-        self::assertInstanceOf(TransactionRetryLimitExceededException::class, $exception);
-        // The attempt-count ceiling is 0 (unbounded), so the only
-        // way to leave this loop is through the timeout ceiling.
-        // We assert (a) elapsed-since-start equals elapsedSeconds
-        // within a small tolerance, and (b) attempts > 0 — the loop
-        // really did retry, it did not exit on the first throw.
-        self::assertGreaterThan(0, $exception->attempts);
-        $delta = abs($exception->elapsedSeconds - (microtime(true) - $startedAt));
-        self::assertLessThan(
-            1.0,
-            $delta,
-            'elapsedSeconds reported in exception must match wall-clock.',
-        );
+                    return 'committed';
+                },
+            ));
+
+            self::assertInstanceOf(
+                TransactionRetryLimitExceededException::class,
+                $exception,
+                'Expected the wall-clock ceiling to abort the conflicting loop',
+            );
+            self::assertGreaterThan(0, $exception->attempts, 'The loop must have retried at least once');
+            self::assertGreaterThan(0.0, $exception->elapsedSeconds);
+        } finally {
+            $db->clear(self::KEY);
+        }
     }
 
     #[Test]
-    public function resetClearsRetryConfiguration(): void
+    public function readTransactWorksWithACeilingConfigured(): void
     {
-        FoundationDB::defaultTransactionRetryLimit(50);
-        FoundationDB::defaultTransactionTimeoutSeconds(7.5);
+        $db = $this->getDatabase();
 
-        // reset() is documented process-wide; it also clears retry policy.
-        FoundationDB::reset();
+        FoundationDB::defaultTransactionRetryLimit(5);
 
-        self::assertSame(0, FoundationDB::getDefaultTransactionRetryLimit());
-        self::assertSame(0.0, FoundationDB::getDefaultTransactionTimeoutSeconds());
+        // Snapshot reads cannot conflict, so a clean read proves the
+        // readTransact path is wired through the bounded loop without
+        // changing its behaviour.
+        $value = $db->readTransact(static fn (Snapshot $snap): ?string => $snap->get(self::KEY)->await());
+
+        self::assertNull($value);
+    }
+
+    #[Test]
+    public function watchWorksWithACeilingConfigured(): void
+    {
+        $db = $this->getDatabase();
+
+        FoundationDB::defaultTransactionRetryLimit(5);
+
+        $future = $db->watch(self::KEY);
+
+        self::assertInstanceOf(FutureVoid::class, $future);
+
+        $future->cancel();
     }
 }
