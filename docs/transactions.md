@@ -198,6 +198,16 @@ $db->transact(function (Transaction $tr) {
 - Useful for frequently-read data that changes often but doesn't need strict consistency
 - You can mix snapshot and regular reads in the same transaction
 
+### Lifetime and ownership
+
+- Each call to `$tr->snapshot()` returns a **new** `Snapshot` instance; don't rely on
+  identity (`===`) between two calls.
+- A `Snapshot` shares its parent transaction's native handle. It holds a strong
+  reference to the parent `Transaction`, so the native handle stays valid for as long
+  as the `Snapshot` exists.
+- Once both the `Transaction` and its `Snapshot` go out of scope, the native transaction
+  is destroyed immediately by refcounting — no garbage-collection cycle is involved.
+
 ---
 
 ## Read-Only Transactions
