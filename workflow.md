@@ -85,7 +85,7 @@ composer test   # All tests pass (unit + integration where applicable)
 
 ```bash
 composer test                # All tests
-composer test:unit           # Unit tests only (317 tests, no FDB required)
+composer test:unit           # Unit tests only (no FDB required)
 composer test:integration    # Integration tests (requires running FDB cluster)
 ```
 
