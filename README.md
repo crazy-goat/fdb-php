@@ -390,7 +390,7 @@ composer rector        # Rector dry-run
 ### Testing
 
 ```bash
-composer test:unit     # 317 unit tests (no FDB required)
+composer test:unit     # Unit tests (no FDB required)
 ```
 
 Integration tests require a running FoundationDB instance:
