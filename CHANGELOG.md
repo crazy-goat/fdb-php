@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Changed
+- [#54] Maintainability refactor (`src/Directory/HighContentionAllocator.php`,
+  `src/Directory/DirectoryLayer.php`). `DirectoryLayer` now uses the imported
+  `CrazyGoat\FoundationDB\Subspace` class (via `use`) instead of repeating the
+  inline fully-qualified class name in 13 `instanceof` checks. The high-contention
+  allocator's `allocate()` was decomposed into well-named private steps
+  (`counterStart()`, `advanceWindow()`, `counterAdvancedAway()`) so the window
+  retirement predicate and the "read latest counter" re-check have a single,
+  documented home instead of inline blocks; the magic transaction-option number
+  `30` is replaced by the existing named `TransactionOptions::setNextWriteNoWriteConflictRange()`
+  helper. No behaviour change — tuple/key encoding and the window-advance rules
+  are byte-for-byte identical.
 - [#46] `FoundationDB::open()` / `FoundationDB::openWithConnectionString()`
   previously cached every distinct `Database` for the entire process
   lifetime in an unbounded static array, so an application opening many

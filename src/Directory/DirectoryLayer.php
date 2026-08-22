@@ -56,7 +56,7 @@ final readonly class DirectoryLayer
 
             $existing = $this->find($tr, $path);
 
-            if ($existing instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if ($existing instanceof Subspace) {
                 $existingLayer = $this->getNodeLayer($tr, $existing);
 
                 if ($layer !== '' && $existingLayer !== $layer) {
@@ -90,7 +90,7 @@ final readonly class DirectoryLayer
 
                 $existing = $this->find($tr, $path);
 
-                if ($existing instanceof \CrazyGoat\FoundationDB\Subspace) {
+                if ($existing instanceof Subspace) {
                     throw new DirectoryException('Directory already exists.');
                 }
 
@@ -111,7 +111,7 @@ final readonly class DirectoryLayer
 
             $existing = $this->find($tr, $path);
 
-            if (!$existing instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$existing instanceof Subspace) {
                 throw new DirectoryException('Directory does not exist.');
             }
 
@@ -193,13 +193,13 @@ final readonly class DirectoryLayer
 
             $oldNode = $this->find($tr, $oldPath);
 
-            if (!$oldNode instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$oldNode instanceof Subspace) {
                 throw new DirectoryException('Source directory does not exist.');
             }
 
             $newNode = $this->find($tr, $newPath);
 
-            if ($newNode instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if ($newNode instanceof Subspace) {
                 throw new DirectoryException('Destination directory already exists.');
             }
 
@@ -208,7 +208,7 @@ final readonly class DirectoryLayer
             if ($newParentPath !== []) {
                 $newParent = $this->find($tr, $newParentPath);
 
-                if (!$newParent instanceof \CrazyGoat\FoundationDB\Subspace) {
+                if (!$newParent instanceof Subspace) {
                     throw new DirectoryException('Parent of destination directory does not exist.');
                 }
             }
@@ -218,7 +218,7 @@ final readonly class DirectoryLayer
                 ? $this->find($tr, $newParentPath)
                 : $this->rootNode;
 
-            if (!$newParentNode instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$newParentNode instanceof Subspace) {
                 throw new DirectoryException('Parent of destination directory does not exist.');
             }
 
@@ -241,7 +241,7 @@ final readonly class DirectoryLayer
                 ? $this->find($tr, $oldParentPath)
                 : $this->rootNode;
 
-            if (!$oldParentNode instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$oldParentNode instanceof Subspace) {
                 // Old parent is missing — surface the standard
                 // "source-not-found" exception rather than a
                 // partition-crossing one.
@@ -282,7 +282,7 @@ final readonly class DirectoryLayer
 
             $node = $this->find($tr, $path);
 
-            if (!$node instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$node instanceof Subspace) {
                 throw new DirectoryException('Directory does not exist.');
             }
 
@@ -305,7 +305,7 @@ final readonly class DirectoryLayer
 
             $node = $this->find($tr, $path);
 
-            if (!$node instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$node instanceof Subspace) {
                 return false;
             }
 
@@ -327,7 +327,7 @@ final readonly class DirectoryLayer
 
             $node = $path !== [] ? $this->find($tr, $path) : $this->rootNode;
 
-            if (!$node instanceof \CrazyGoat\FoundationDB\Subspace) {
+            if (!$node instanceof Subspace) {
                 throw new DirectoryException('Directory does not exist.');
             }
 
@@ -356,7 +356,7 @@ final readonly class DirectoryLayer
         return $this->runInTransaction($dbOrTr, function (Transaction $tr) use ($path): bool {
             $this->checkVersion($tr);
 
-            return $this->find($tr, $path) instanceof \CrazyGoat\FoundationDB\Subspace;
+            return $this->find($tr, $path) instanceof Subspace;
         });
     }
 
@@ -537,7 +537,7 @@ final readonly class DirectoryLayer
             ? $this->find($tr, $parentPath)
             : $this->rootNode;
 
-        if (!$parentNode instanceof \CrazyGoat\FoundationDB\Subspace) {
+        if (!$parentNode instanceof Subspace) {
             return;
         }
 
