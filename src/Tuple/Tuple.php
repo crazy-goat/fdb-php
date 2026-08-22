@@ -504,7 +504,16 @@ final class Tuple
             $value = ($value << 8) | ord($data[$pos + 1 + $i]);
         }
 
-        if ($value < 0) {
+        // Positive ints encode in up to 8 bytes. An 8-byte value whose
+        // most significant bit is set is >= 2^63, which overflows PHP's
+        // 64-bit signed int (the cumulative `<< 8` would silently wrap
+        // negative past PHP_INT_MAX), so it must be decoded as an
+        // arbitrary-precision GMP number. An 8-byte value with the top bit
+        // clear (e.g. PHP_INT_MAX) still fits in a plain int. We test this
+        // explicitly via the top byte instead of relying on the overflow
+        // (which static analysis cannot model) so the check is never
+        // reported as "always false" by newer PHPStan versions.
+        if ($byteCount === 8 && (ord($data[$pos + 1]) & 0x80) !== 0) {
             if (!extension_loaded('gmp')) {
                 throw new \RuntimeException('GMP extension is required for large integer support');
             }
