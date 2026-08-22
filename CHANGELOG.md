@@ -192,6 +192,16 @@
   so legitimate deeply-nested user data is unaffected.
 
 ### Added
+- [#45] `tests/Integration/DirectoryTest::directoryPartitionSubdirectories`
+  previously only asserted that a child directory created inside a partition
+  had the right path and *existed* — it never wrote or read an actual key
+  through the returned subspace, so a non-interoperable partition prefix
+  layout could pass CI. The test now asserts the child subspace's prefix
+  lives strictly inside the partition's prefix space, round-trips a write
+  through `$sub->pack(['k'])` and reads it back via a raw
+  `getRangeAllStartsWith($partition->rawPrefix)` scan, proving partition-born
+  content keys land inside (not outside or colliding with) the partition
+  boundary.
 - [#71] `Database::getClientStatus()` now accepts an optional `bool $asArray = false`
   parameter. When `true`, it returns the decoded status as an
   `array<string, mixed>`, making its return type consistent with

@@ -8,6 +8,7 @@ use CrazyGoat\FoundationDB\Directory\DirectoryException;
 use CrazyGoat\FoundationDB\Directory\DirectoryLayer;
 use CrazyGoat\FoundationDB\Directory\DirectoryPartition;
 use CrazyGoat\FoundationDB\Directory\DirectorySubspace;
+use CrazyGoat\FoundationDB\KeyValue;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
@@ -609,6 +610,34 @@ final class DirectoryTest extends TestCase
         self::assertSame(['child'], $sub->getPath());
 
         self::assertTrue($partition->exists($this->getDatabase(), ['child']));
+
+        // The child's content keys must live *inside* the partition's
+        // prefix space — otherwise a partition-born directory leaks bytes
+        // outside its boundary and collides with sibling partitions or the
+        // top-level content subspace. The child subspace is built on the
+        // partition's own internal layer, so its prefix is partitionPrefix
+        // followed by the allocated sub-prefix (+ a trailing tuple EOC byte
+        // when we pack a key). Asserting the exact relationship below is
+        // what actually validates the partition prefix layout end to end.
+        self::assertTrue(str_starts_with($sub->rawPrefix, $partition->rawPrefix));
+        self::assertNotSame($sub->rawPrefix, $partition->rawPrefix);
+
+        // Round-trip a write through the returned subspace and verify the
+        // stored key really begins with the child subspace prefix (and thus
+        // lives under the partition boundary).
+        $db = $this->getDatabase();
+        $db->set($sub->pack(['k']), 'v');
+
+        $key = $sub->pack(['k']);
+        self::assertTrue(str_starts_with($key, $partition->rawPrefix));
+        self::assertSame('v', $db->get($key));
+
+        // A raw range scan over the *partition* prefix must surface exactly
+        // the key we wrote through the child subspace — proving the write
+        // landed inside the partition, not merely in the global content space.
+        $kvs = $db->getRangeAllStartsWith($partition->rawPrefix);
+        $keys = array_map(static fn (KeyValue $kv): string => $kv->key, $kvs);
+        self::assertContains($key, $keys);
     }
 
     #[Test]

@@ -168,6 +168,16 @@ $partition = $dir->create($db, ['isolated'], layer: 'partition');
 $sub = $partition->createOrOpen($db, ['data']);
 ```
 
+A partition's subdirectories carry the partition's own prefix (the internal
+layer is built on `rawPrefix` and `rawPrefix . "\xFE"`), so content keys of a
+partition-born child always *start with* the partition's `rawPrefix` and
+strictly extend it. The integration suite asserts this exact byte layout
+(`tests/Integration/DirectoryTest.php::directoryPartitionSubdirectories`):
+it round-trips a write through the returned child subspace and verifies a raw
+`getRangeAllStartsWith($partition->rawPrefix)` scan surfaces that key — writing
+a test that only asserts `exists()` would not catch a partition prefix that
+silently leaked bytes outside the partition boundary.
+
 ## Custom Node/Content Subspaces
 
 ```php
