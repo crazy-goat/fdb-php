@@ -68,6 +68,39 @@ FDB::apiVersion(730);
 $db = FDB::openWithConnectionString('my_cluster:abc123@127.0.0.1:4500');
 ```
 
+## Database Cache (connection reuse & bounds)
+
+`FoundationDB::open()` and `FoundationDB::openWithConnectionString()` keep a
+process-wide cache of opened `Database` objects so that opening the same cluster
+file or connection string twice returns the same instance (and does not create a
+second native `FDBDatabase` handle). This is what makes opening the same database
+repeatedly cheap.
+
+The cache is **bounded** to avoid unbounded native-handle growth in applications
+that open many distinct clusters or connection strings (multi-tenant, dynamic
+connection strings, failover scripts). By default up to `8` distinct databases are
+cached; opening more evicts the least-recently-used entry:
+
+```php
+// Raise or lower the bound (must be >= 1). Default is 8.
+FDB::setMaxDatabases(32);
+echo FDB::getMaxDatabases(); // 32
+```
+
+Eviction only drops the cache reference. If your application still holds the evicted
+`Database` in a variable, it continues to work normally and its native handle is
+released only once all references are gone (or you call `close()`). Re-opening an
+evicted connection string simply creates a fresh database.
+
+Two implications follow from `open()` / `openWithConnectionString()` reusing a
+cached instance:
+
+- **Do not call `close()` on a database you may open again** — `close()` removes it
+  from the cache, so the next `open()` allocates a fresh native handle.
+- Because the cache is process-wide and static, it is reset by `FoundationDB::reset()`
+  (test-only and process-shutdown convenience), which also restores the default
+  bound of `8`.
+
 ## Explicit Lifecycle Management
 
 ```php

@@ -16,6 +16,25 @@ final class FoundationDB
     /** @var array<string, Database> */
     private static array $databases = [];
 
+    private const DEFAULT_MAX_DATABASES = 8;
+
+    private static int $maxDatabases = self::DEFAULT_MAX_DATABASES;
+
+    /**
+     * LRU ordering metadata for the bounded database cache.
+     *
+     * Maps each cache key in `self::$databases` to the access sequence
+     * number at which it was last inserted or re-used. Combined with the
+     * monotonically increasing `self::$accessCounter`, this lets the
+     * cache evict the least-recently-used entry when `self::$maxDatabases`
+     * is exceeded.
+     *
+     * @var array<string, int>
+     */
+    private static array $dbAccess = [];
+
+    private static int $accessCounter = 0;
+
     /**
      * Default maximum number of `on_error()` retry attempts for the
      * convenience retry loops on `Database::transact()`,
@@ -159,6 +178,45 @@ final class FoundationDB
         return self::$defaultTransactionTimeoutSeconds;
     }
 
+    /**
+     * Configure the maximum number of distinct `Database` objects kept
+     * in the process-wide cache concurrently. Opening more than this
+     * many distinct cluster files / connection strings evicts the
+     * least-recently-used cached entry so the process does not retain
+     * an unbounded number of live native `FDBDatabase` handles.
+     *
+     * A cached `Database` that is evicted is removed from the cache
+     * (and its native handle released) only when there are no other PHP
+     * references to that instance; if it is still in use by the
+     * application it continues to work, it simply stops being cached
+     * for future `open()` calls. Re-opening an evicted database creates
+     * a fresh one.
+     *
+     * `$limit` must be `> 0`; `0` or a negative value is rejected with
+     * `\InvalidArgumentException`, because `0` would leave the cache
+     * unusable rather than simply unbounded (the historical behaviour
+     * is preserved only by choosing a "large enough" positive bound).
+     *
+     * The default is `8`. Reset to the default via
+     * `FoundationDB::reset()`.
+     */
+    public static function setMaxDatabases(int $limit): void
+    {
+        if ($limit < 1) {
+            throw new \InvalidArgumentException(
+                'setMaxDatabases must be >= 1 (0 would disable caching entirely). Got: ' . $limit,
+            );
+        }
+
+        self::$maxDatabases = $limit;
+        self::trimDatabaseCache();
+    }
+
+    public static function getMaxDatabases(): int
+    {
+        return self::$maxDatabases;
+    }
+
     public static function open(?string $clusterFile = null): Database
     {
         if (self::$apiVersion === null) {
@@ -172,22 +230,7 @@ final class FoundationDB
 
         $cacheKey = $resolvedFile ?? '__default__';
 
-        if (isset(self::$databases[$cacheKey])) {
-            return self::$databases[$cacheKey];
-        }
-
-        $client = NativeClient::getInstance();
-        $client->ensureNetwork();
-
-        $dbPointer = $client->fdb->new('FDBDatabase*');
-        $client->checkError(
-            $client->fdb->fdb_create_database($resolvedFile, FFI::addr($dbPointer)),
-        );
-
-        $database = new Database($dbPointer, $client);
-        self::$databases[$cacheKey] = $database;
-
-        return $database;
+        return self::openCached($cacheKey, $resolvedFile);
     }
 
     public static function openWithConnectionString(string $connectionString): Database
@@ -198,9 +241,27 @@ final class FoundationDB
             );
         }
 
-        $cacheKey = 'conn:' . $connectionString;
+        return self::openCached('conn:' . $connectionString, null, $connectionString);
+    }
 
+    /**
+     * Open (and cache) a database by key, re-using a cached instance
+     * when present and evicting the least-recently-used entry when the
+     * bounded cache exceeds `self::$maxDatabases`.
+     *
+     * @param string      $cacheKey         unique cache key for this database
+     * @param string|null $clusterFile      cluster file argument for `open()`, if any
+     * @param string|null $connectionString connection string argument for `openWithConnectionString()`, if any
+     */
+    private static function openCached(
+        string $cacheKey,
+        ?string $clusterFile = null,
+        ?string $connectionString = null,
+    ): Database {
         if (isset(self::$databases[$cacheKey])) {
+            // Touch the entry so it counts as most-recently-used.
+            self::$dbAccess[$cacheKey] = ++self::$accessCounter;
+
             return self::$databases[$cacheKey];
         }
 
@@ -208,14 +269,49 @@ final class FoundationDB
         $client->ensureNetwork();
 
         $dbPointer = $client->fdb->new('FDBDatabase*');
-        $client->checkError(
-            $client->fdb->fdb_create_database_from_connection_string($connectionString, FFI::addr($dbPointer)),
-        );
+        if ($connectionString === null) {
+            $client->checkError(
+                $client->fdb->fdb_create_database($clusterFile, FFI::addr($dbPointer)),
+            );
+        } else {
+            $client->checkError(
+                $client->fdb->fdb_create_database_from_connection_string($connectionString, FFI::addr($dbPointer)),
+            );
+        }
 
         $database = new Database($dbPointer, $client);
         self::$databases[$cacheKey] = $database;
+        self::$dbAccess[$cacheKey] = ++self::$accessCounter;
+        self::trimDatabaseCache();
 
         return $database;
+    }
+
+    /**
+     * Evict cache entries beyond `self::$maxDatabases`, oldest first.
+     * Eviction only drops the cache reference; if the `Database` is
+     * still referenced elsewhere (e.g. held by the application) it stays
+     * alive until those references are released, at which point its
+     * native handle is destroyed by its destructor.
+     */
+    private static function trimDatabaseCache(): void
+    {
+        while (count(self::$databases) > self::$maxDatabases) {
+            $oldestKey = null;
+            $oldestAccess = PHP_INT_MAX;
+            foreach (self::$dbAccess as $key => $access) {
+                if ($access < $oldestAccess) {
+                    $oldestAccess = $access;
+                    $oldestKey = $key;
+                }
+            }
+
+            if ($oldestKey === null) {
+                break;
+            }
+
+            unset(self::$databases[$oldestKey], self::$dbAccess[$oldestKey]);
+        }
     }
 
     /** @internal */
@@ -223,7 +319,7 @@ final class FoundationDB
     {
         foreach (self::$databases as $key => $cached) {
             if ($cached === $database) {
-                unset(self::$databases[$key]);
+                unset(self::$databases[$key], self::$dbAccess[$key]);
             }
         }
     }
@@ -235,6 +331,7 @@ final class FoundationDB
             $database->close();
         }
         self::$databases = [];
+        self::$dbAccess = [];
     }
 
     /** @internal */
@@ -242,6 +339,9 @@ final class FoundationDB
     {
         self::$apiVersion = null;
         self::$databases = [];
+        self::$dbAccess = [];
+        self::$accessCounter = 0;
+        self::$maxDatabases = self::DEFAULT_MAX_DATABASES;
         self::$defaultTransactionRetryLimit = 0;
         self::$defaultTransactionTimeoutSeconds = 0.0;
     }

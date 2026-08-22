@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Changed
+- [#46] `FoundationDB::open()` / `FoundationDB::openWithConnectionString()`
+  previously cached every distinct `Database` for the entire process
+  lifetime in an unbounded static array, so an application opening many
+  cluster files or connection strings held a growing number of live native
+  `FDBDatabase` handles with no eviction except an explicit `close()`.
+  The cache is now **bounded**: by default up to `8` distinct databases are
+  kept, and opening more evicts the least-recently-used entry. Eviction
+  only drops the cache reference — a `Database` still held by the
+  application keeps working, and its native handle is released when the
+  last reference disappears (its destructor) or on `close()`. The bound is
+  configurable via `FoundationDB::setMaxDatabases(int)` /
+  `FoundationDB::getMaxDatabases()` (must be `>= 1`; a rejected value
+  leaves the current bound untouched) and is reset to `8` by
+  `FoundationDB::reset()`. Re-opening same connection still returns the
+  cached instance; `close()` still removes a database from the cache.
+  Coverage: `tests/Unit/FoundationDBDatabaseCacheTest.php` exercises the
+  LRU eviction, capacity bound, configuration validation and reset
+  behaviour (pure cache logic via reflection, no live cluster needed);
+  `docs/advanced.md` documents cache lifetime, ownership and the new knob.
+
 ### Fixed
 - [#52] `Database::transact()`, `Database::readTransact()`, and the four
   `watch*` helpers (`watch`, `getAndWatch`, `setAndWatch`,
