@@ -198,6 +198,15 @@ $db->transact(function (Transaction $tr) {
 - Useful for frequently-read data that changes often but doesn't need strict consistency
 - You can mix snapshot and regular reads in the same transaction
 
+> **Lifetime note:** each `snapshot()` call returns a fresh `Snapshot` (it is
+> not cached on the transaction). A `Snapshot` shares its parent's native
+> handle and keeps the parent `Transaction` alive as long as it exists — but
+> because the reference is one-directional, both objects are released as soon
+> as they go out of scope and `fdb_transaction_destroy()` runs deterministically.
+> Caching the snapshot on the transaction was removed in [#38]: a reference
+> cycle deferred native-handle destruction to the cycle collector, which leaked
+> handles in long-running workers with the collector disabled.
+
 ---
 
 ## Read-Only Transactions
