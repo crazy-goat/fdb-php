@@ -20,8 +20,8 @@
   Coverage: `tests/Unit/TransactionSnapshotLifecycleTest.php` proves the
   destructor runs at scope exit with the cycle collector out of the picture
   (stubbed native library, no live cluster);
-  `tests/Integration/TransactionSnapshotLifecycleTest.php` exercises the
-  `readTransact()` and directory loops against a live cluster.
+  `tests/Integration/TransactionSnapshotLifecycleTest.php` exercises
+  `readTransact()` loops against a live cluster.
 
 ### Changed
 - [#54] Maintainability refactor (`src/Directory/HighContentionAllocator.php`,
