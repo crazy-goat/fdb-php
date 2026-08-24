@@ -217,30 +217,25 @@ final class TransactionSnapshotLifecycleTest extends TestCase
 
     /**
      * Initializes a typed (possibly readonly) property without invoking the
-     * constructor. Uses a class-scope-bound closure, which initializes
-     * uninitialized readonly properties on every supported PHP version
-     * (8.2-8.4); falls back to reflection for forward compatibility.
+     * constructor, portably across 8.2-8.4.
+     *
+     * There is no reflection-free way to initialise a *private* readonly
+     * property from outside its declaring class. We use a closure bound to the
+     * DECLARING class of the property (not the instantiated object): PHP
+     * allows initialising an uninitialized readonly property from the scope
+     * that declared it, which works regardless of the runtime PHP version.
      */
     private static function initializeReadOnly(object $object, string $property, mixed $value): void
     {
-        try {
-            \Closure::bind(
-                static function (object $target, string $name, mixed $val): void {
-                    // Bound to the declaring scope: legal for readonly init.
-                    $that = $target;
-                    $that->$name = $val;
-                },
-                null,
-                $object,
-            )($object, $property, $value);
+        $declaringClass = (new \ReflectionProperty($object, $property))->getDeclaringClass()->getName();
 
-            return;
-        } catch (\Throwable) {
-            // Fall through to the reflection path.
-        }
-
-        $reflection = new \ReflectionProperty($object, $property);
-        $reflection->setValue($object, $value);
+        \Closure::bind(
+            static function (object $target, string $name, mixed $val): void {
+                $target->$name = $val;
+            },
+            null,
+            $declaringClass,
+        )($object, $property, $value);
     }
 
     private function parentOf(object $snapshot): Transaction
