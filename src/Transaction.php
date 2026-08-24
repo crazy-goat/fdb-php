@@ -15,8 +15,6 @@ use FFI\CData;
 
 final class Transaction extends ReadTransaction implements Transactor
 {
-    private ?Snapshot $snapshotInstance = null;
-
     public function __construct(
         CData $tpointer,
         Database $db,
@@ -313,9 +311,24 @@ final class Transaction extends ReadTransaction implements Transactor
         );
     }
 
+    /**
+     * Returns a fresh Snapshot sharing this transaction's native handle.
+     *
+     * The Snapshot is intentionally NOT cached on the Transaction: a cached
+     * instance would hold a strong back-reference to $this, forming a
+     * reference cycle (Transaction -> snapshotInstance -> parentTransaction)
+     * whose refcount never reaches zero on scope exit. That defers
+     * fdb_transaction_destroy() to the cycle collector (or process shutdown
+     * with zend.enable_gc=0), leaking native handles in long-running workers.
+     *
+     * Without the cache, the Snapshot keeps its parent alive one-directionally,
+     * and both objects are released deterministically when they go out of scope.
+     *
+     * @see \CrazyGoat\FoundationDB\Snapshot for the lifetime relationship.
+     */
     public function snapshot(): Snapshot
     {
-        return $this->snapshotInstance ??= new Snapshot($this->tpointer, $this->db, $this->client, $this);
+        return new Snapshot($this->tpointer, $this->db, $this->client, $this);
     }
 
     public function transact(callable $fn): mixed

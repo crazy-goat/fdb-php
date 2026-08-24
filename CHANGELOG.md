@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed
+- [#38] `Transaction::snapshot()` no longer caches the `Snapshot` on its
+  parent `Transaction`. The cached instance held a strong back-reference to
+  the transaction, forming a reference cycle
+  (`Transaction -> snapshotInstance -> Snapshot -> parentTransaction`) whose
+  refcount never reached zero on scope exit. As a result
+  `fdb_transaction_destroy()` did not run deterministically — it was deferred
+  to the PHP cycle collector, and with `zend.enable_gc=0` until process
+  shutdown, so long-running workers (FPM/RoadRunner/Swoole/queue consumers)
+  accumulated undestroyed native transaction handles: the cycle was created on
+  every `Database::readTransact()`, every directory create/open (through
+  `HighContentionAllocator`) and every `Locality` call. `snapshot()` now
+  returns a fresh `Snapshot` each call; read-only semantics are unchanged and
+  snapshots still share the parent's native handle (reads remain consistent),
+  but the transaction is released deterministically when it goes out of scope.
+  Coverage: `tests/Unit/TransactionSnapshotLifecycleTest.php` proves the
+  destructor runs at scope exit with the cycle collector out of the picture
+  (stubbed native library, no live cluster);
+  `tests/Integration/TransactionSnapshotLifecycleTest.php` exercises
+  `readTransact()` loops against a live cluster.
+
 ### Changed
 - [#54] Maintainability refactor (`src/Directory/HighContentionAllocator.php`,
   `src/Directory/DirectoryLayer.php`). `DirectoryLayer` now uses the imported
