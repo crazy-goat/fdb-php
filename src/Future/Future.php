@@ -25,12 +25,18 @@ abstract class Future
     /**
      * Reports whether the future resolved to an error. Only meaningful once
      * the future is ready — call isReady() first or blockUntilReady() via
-     * await(). Complements fdb_future_get_error(), which returns the actual
-     * error code (0 when the future succeeded).
+     * await(), and unlike await()/blockUntilReady() this does not throw the
+     * error, it merely reports it.
+     *
+     * Note: this is deliberately NOT bound to fdb_future_is_error, which is
+     * a removed-API stub in fdb_c.h for API versions >= 23 (calling it on a
+     * modern libfdb_c aborts the process with "REMOVED FDB API FUNCTION").
+     * The equivalent, safe source of truth is fdb_future_get_error(), which
+     * returns the error code (0 when the future succeeded).
      */
     public function isError(): bool
     {
-        return (bool) $this->client->fdb->fdb_future_is_error($this->fpointer);
+        return $this->client->fdb->fdb_future_get_error($this->fpointer) !== 0;
     }
 
     public function cancel(): void

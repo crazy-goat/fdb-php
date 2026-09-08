@@ -12,8 +12,10 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Unit tests for the future accessors bound in issue #98:
- * `fdb_future_is_error` (via `Future::isError()`) and
- * `fdb_future_get_bool` (via `FutureBool::await()`).
+ * `fdb_future_get_bool` (via `FutureBool::await()`) and the error-state
+ * check implemented as `Future::isError()` (`fdb_future_get_error() != 0`;
+ * `fdb_future_is_error` itself is a removed-API stub for API >= 23 and must
+ * not be called).
  *
  * As with TransactionSnapshotLifecycleTest, no FoundationDB cluster or real
  * client library is needed: a tiny stub C library is compiled on the fly and
@@ -88,7 +90,6 @@ final class FutureBoolTest extends TestCase
             int fdb_future_block_until_ready(void* f) { (void)f; return 0; }
             int fdb_future_is_ready(void* f) { (void)f; return 1; }
             int fdb_future_get_error(void* f) { (void)f; return g_is_error ? 1020 : 0; }
-            int fdb_future_is_error(void* f) { (void)f; return g_is_error; }
             int fdb_future_get_bool(void* f, int* out) { (void)f; *out = g_bool_value; return g_is_error ? 1020 : 0; }
             void fdb_phpunit_stub_set_error(int v) { g_is_error = v; }
             void fdb_phpunit_stub_set_bool(int v) { g_bool_value = v; }
@@ -103,7 +104,6 @@ final class FutureBoolTest extends TestCase
             int fdb_future_block_until_ready(FDBFuture* f);
             int fdb_future_is_ready(FDBFuture* f);
             int fdb_future_get_error(FDBFuture* f);
-            int fdb_future_is_error(FDBFuture* f);
             int fdb_future_get_bool(FDBFuture* f, int* out);
             void fdb_phpunit_stub_set_error(int v);
             void fdb_phpunit_stub_set_bool(int v);
