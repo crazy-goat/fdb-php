@@ -249,7 +249,6 @@ final class NativeClient
 
             $funcPtr = FFI::cast($this->pthread->type('thread_func'), $runNetworkPtr);
 
-            \assert($this->networkThread instanceof \FFI\CData);
             $result = $this->pthread->pthread_create(
                 FFI::addr($this->networkThread),
                 null,
