@@ -276,6 +276,115 @@ final class DatabaseConvenienceTest extends TestCase
     }
 
     #[Test]
+    public function byteMaxAtomicOperation(): void
+    {
+        $this->getDatabase()->set('test/conv/bmax', 'mango');
+
+        $this->getDatabase()->byteMax('test/conv/bmax', 'apple');
+
+        self::assertSame('mango', $this->getDatabase()->get('test/conv/bmax'));
+    }
+
+    #[Test]
+    public function byteMaxAtomicOperationReplacesWhenLarger(): void
+    {
+        $this->getDatabase()->set('test/conv/bmax2', 'apple');
+
+        $this->getDatabase()->byteMax('test/conv/bmax2', 'mango');
+
+        self::assertSame('mango', $this->getDatabase()->get('test/conv/bmax2'));
+    }
+
+    #[Test]
+    public function byteMinAtomicOperation(): void
+    {
+        $this->getDatabase()->set('test/conv/bmin', 'mango');
+
+        $this->getDatabase()->byteMin('test/conv/bmin', 'apple');
+
+        self::assertSame('apple', $this->getDatabase()->get('test/conv/bmin'));
+    }
+
+    #[Test]
+    public function byteMinAtomicOperationKeepsExistingWhenSmaller(): void
+    {
+        $this->getDatabase()->set('test/conv/bmin2', 'apple');
+
+        $this->getDatabase()->byteMin('test/conv/bmin2', 'mango');
+
+        self::assertSame('apple', $this->getDatabase()->get('test/conv/bmin2'));
+    }
+
+    #[Test]
+    public function appendIfFitsAppendsToStoredValue(): void
+    {
+        $this->getDatabase()->set('test/conv/aif', 'start');
+
+        $this->getDatabase()->appendIfFits('test/conv/aif', '-end');
+
+        self::assertSame('start-end', $this->getDatabase()->get('test/conv/aif'));
+    }
+
+    #[Test]
+    public function appendIfFitsIsNoOpWhenResultWouldExceedLimit(): void
+    {
+        $existing = str_repeat('a', 99_990);
+        $this->getDatabase()->set('test/conv/aif-limit', $existing);
+
+        $this->getDatabase()->appendIfFits('test/conv/aif-limit', str_repeat('b', 11));
+
+        self::assertSame($existing, $this->getDatabase()->get('test/conv/aif-limit'));
+    }
+
+    #[Test]
+    public function transactionAppendIfFitsAppendsToStoredValue(): void
+    {
+        $this->getDatabase()->set('test/conv/aif-tr', 'start');
+
+        $this->getDatabase()->transact(function ($tr): void {
+            $tr->appendIfFits('test/conv/aif-tr', '-end');
+        });
+
+        self::assertSame('start-end', $this->getDatabase()->get('test/conv/aif-tr'));
+    }
+
+    #[Test]
+    public function setVersionstampedKeyOnDatabase(): void
+    {
+        // 10 bytes of \xff is the versionstamp placeholder inside the key.
+        // The position of the placeholder (4 bytes, little-endian) is appended
+        // to the key parameter and stripped from the stored key on commit.
+        $key = 'test/conv/vskey/' . str_repeat("\xff", 10) . '-suffix' . pack('V', 16);
+
+        $this->getDatabase()->setVersionstampedKey($key, 'value');
+
+        $keys = $this->getDatabase()->getRangeStartsWith('test/conv/vskey/');
+        self::assertCount(1, $keys);
+        $committed = $keys[0]->key;
+        self::assertSame('test/conv/vskey/', substr($committed, 0, 16));
+        self::assertNotSame(str_repeat("\xff", 10), substr($committed, 16, 10));
+        self::assertSame('-suffix', substr($committed, 26));
+        self::assertSame('value', $keys[0]->value);
+    }
+
+    #[Test]
+    public function setVersionstampedValueOnDatabase(): void
+    {
+        // 10 bytes of \xff is the versionstamp placeholder inside the value.
+        // The position of the placeholder (4 bytes, little-endian) is appended
+        // to the value parameter and stripped from the stored value on commit.
+        $value = 'prefix-' . str_repeat("\xff", 10) . '-suffix' . pack('V', 7);
+
+        $this->getDatabase()->setVersionstampedValue('test/conv/vsvalue', $value);
+
+        $stored = $this->getDatabase()->get('test/conv/vsvalue');
+        self::assertNotNull($stored);
+        self::assertSame('prefix-', substr($stored, 0, 7));
+        self::assertNotSame(str_repeat("\xff", 10), substr($stored, 7, 10));
+        self::assertSame('-suffix', substr($stored, 17));
+    }
+
+    #[Test]
     public function getEstimatedRangeSizeBytesReturnsNonNegative(): void
     {
         for ($i = 0; $i < 10; $i++) {
