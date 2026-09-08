@@ -46,6 +46,7 @@ final class NativeClient
         fdb_bool_t fdb_future_is_ready(FDBFuture* f);
         fdb_error_t fdb_future_get_error(FDBFuture* f);
         fdb_error_t fdb_future_get_int64(FDBFuture* f, int64_t* out);
+        fdb_error_t fdb_future_get_bool(FDBFuture* f, fdb_bool_t* out);
         fdb_error_t fdb_future_get_key(FDBFuture* f, const char** out_key, int* out_key_length);
         fdb_error_t fdb_future_get_value(
             FDBFuture* f, fdb_bool_t* out_present, const char** out_value, int* out_value_length
