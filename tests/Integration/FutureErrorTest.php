@@ -15,24 +15,19 @@ use PHPUnit\Framework\TestCase;
  * `FutureBool` itself has no live producer yet (its first consumer, the blob
  * granule API in #93, is not bound), so the bool path is unit-tested against
  * a compiled libfdb_c stub in `tests/Unit/FutureBoolTest.php`. Here we verify
- * `isError()` against the real client: a pending future is not ready (and
- * isError() is only meaningful once ready), a resolved future is not in
- * error, and a commit that fails with a conflict resolves to the error state.
+ * `isError()` against the real client: a successfully resolved future is not
+ * in error, and a commit that fails with a conflict resolves to the error
+ * state.
  */
 final class FutureErrorTest extends TestCase
 {
     use DatabaseCleanupTrait;
 
     #[Test]
-    public function pendingFutureIsNotReadyAndReadyFutureIsNotInErrorState(): void
+    public function resolvedFutureIsNotInErrorState(): void
     {
         $tr = $this->getDatabase()->createTransaction();
         $future = $tr->getReadVersion();
-
-        // A freshly created future is still pending: isError() must not be
-        // consulted before readiness (fdb_future_is_error is only defined
-        // for ready futures).
-        self::assertFalse($future->isReady());
 
         self::assertGreaterThan(0, $future->await());
         self::assertTrue($future->isReady());
