@@ -29,6 +29,62 @@ final class NativeClient
             int key_length;
         } FDBKey;
 
+        /* Memory layout of KeySelectorRef (packed via #pragma pack(4) in fdb_c.h). */
+        typedef struct __attribute__((packed)) {
+            FDBKey key;
+            fdb_bool_t orEqual;
+            int offset;
+        } FDBKeySelector;
+
+        /* Memory layout of GetRangeReqAndResultRef (packed via #pragma pack(4) in fdb_c.h). */
+        typedef struct __attribute__((packed)) {
+            FDBKeySelector begin;
+            FDBKeySelector end;
+            FDBKeyValue* data;
+            int m_size;
+            int m_capacity;
+        } FDBGetRangeReqAndResult;
+
+        /* Memory layout of MappedKeyValueRef (packed via #pragma pack(4) in fdb_c.h). */
+        /* Memory layout of MappedKeyValueRef (not packed in fdb_c.h).
+         *
+         * The public fdb_c.h FDBMappedKeyValue only models the getRange
+         * alternative of the underlying std::variant, which is not what the
+         * native client actually produces: the reply carries either a point
+         * lookup (GetValueReqAndResultRef, variant index 0) or a range
+         * lookup (GetRangeReqAndResultRef, variant index 1). The real C++
+         * object is laid out as: index key (12B), index value (12B), an
+         * 80-byte variant union at offset 24, and a 4-byte variant index at
+         * offset 104 (padded to a 112-byte stride). FDBGetValue /
+         * FDBGetRangeReqAndResultFull below mirror both alternatives over
+         * the 80-byte union, so the struct declared here mirrors the real
+         * memory layout rather than the one from fdb_c.h.
+         */
+        typedef struct __attribute__((packed)) {
+            FDBKey key;
+            FDBKey value;
+            bool present;
+            unsigned char tail[55];
+        } FDBGetValueReqAndResult;
+
+        typedef struct __attribute__((packed)) {
+            FDBGetRangeReqAndResult reqAndResult;
+            unsigned char tail[24];
+        } FDBGetRangeReqAndResultFull;
+
+        typedef union __attribute__((packed)) {
+            FDBGetValueReqAndResult getValue;
+            FDBGetRangeReqAndResultFull getRange;
+        } FDBMappedReqAndResult;
+
+        typedef struct __attribute__((packed)) {
+            FDBKey key;
+            FDBKey value;
+            FDBMappedReqAndResult reqAndResult;
+            int variant_index;
+            unsigned char tail[4];
+        } FDBMappedKeyValue;
+
         fdb_error_t fdb_select_api_version_impl(int runtime_version, int header_version);
         int fdb_get_max_api_version();
         const char* fdb_get_error(fdb_error_t code);
@@ -101,6 +157,19 @@ final class NativeClient
             fdb_bool_t end_or_equal, int end_offset,
             int limit, int target_bytes, int streaming_mode, int iteration,
             fdb_bool_t snapshot, fdb_bool_t reverse
+        );
+        FDBFuture* fdb_transaction_get_mapped_range(
+            FDBTransaction* tr,
+            const char* begin_key_name, int begin_key_name_length,
+            fdb_bool_t begin_or_equal, int begin_offset,
+            const char* end_key_name, int end_key_name_length,
+            fdb_bool_t end_or_equal, int end_offset,
+            const char* mapper_name, int mapper_name_length,
+            int limit, int target_bytes, int streaming_mode, int iteration,
+            fdb_bool_t snapshot, fdb_bool_t reverse
+        );
+        fdb_error_t fdb_future_get_mappedkeyvalue_array(
+            FDBFuture* f, const FDBMappedKeyValue** out_kvm, int* out_count, fdb_bool_t* out_more
         );
         FDBFuture* fdb_transaction_get_estimated_range_size_bytes(
             FDBTransaction* tr,

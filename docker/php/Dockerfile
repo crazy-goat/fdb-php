@@ -1,6 +1,7 @@
 FROM php:8.2-cli-bookworm
 
 ARG FDB_VERSION=7.3.75
+ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
@@ -11,7 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         procps \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget -q "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_amd64.deb" \
+# Map Docker's TARGETARCH (arm64/amd64) to the FoundationDB deb suffix (aarch64/amd64).
+RUN case "$TARGETARCH" in \
+        arm64) FDB_ARCH=aarch64 ;; \
+        *) FDB_ARCH=amd64 ;; \
+    esac \
+    && wget -q "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" \
         -O /tmp/fdb-clients.deb \
     && dpkg -i /tmp/fdb-clients.deb \
     && rm /tmp/fdb-clients.deb
