@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
+use CrazyGoat\FoundationDB\FDBException;
 use CrazyGoat\FoundationDB\FoundationDB;
 use CrazyGoat\FoundationDB\NativeClient;
 use CrazyGoat\FoundationDB\Transaction;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
@@ -136,5 +138,43 @@ final class NetworkLifecycleTest extends TestCase
         FoundationDB::open();
 
         self::assertTrue(NativeClient::getInstance()->isNetworkStarted());
+    }
+
+    /**
+     * Runs in a separate process: libfdb_c allows fdb_setup_network() only
+     * once per process, so stopping the network here would poison every
+     * later test in the shared integration suite.
+     */
+    #[Test]
+    #[RunInSeparateProcess]
+    public function networkCanBeStoppedAndRestarted(): void
+    {
+        FoundationDB::open();
+        $client = NativeClient::getInstance();
+        self::assertTrue($client->isNetworkStarted());
+
+        $client->stopNetwork();
+        self::assertFalse($client->isNetworkStarted());
+        self::assertFalse($client->isNetworkSetup());
+
+        // Shutdown is idempotent: a second stopNetwork() is a no-op and must
+        // not throw or wedge the process.
+        $client->stopNetwork();
+        self::assertFalse($client->isNetworkStarted());
+
+        // libfdb_c allows fdb_setup_network() only once per process, so a
+        // full re-setup is not possible here — what matters (issue #47) is
+        // that stopping leaves a CONSISTENT state: the flags are cleared and
+        // ensureNetwork() surfaces libfdb_c's "configured only once" error
+        // instead of silently wedging in a half-initialized state.
+        FoundationDB::apiVersion(730);
+        try {
+            $client->ensureNetwork();
+            self::fail('ensureNetwork() after stop must surface the libfdb_c setup error');
+        } catch (FDBException $e) {
+            self::assertStringContainsString('only once', $e->getMessage());
+        }
+        self::assertFalse($client->isNetworkStarted());
+        self::assertFalse($client->isNetworkSetup());
     }
 }
