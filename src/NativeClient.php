@@ -172,6 +172,16 @@ final class NativeClient
 
     private bool $networkStarted = false;
 
+    /**
+     * True once fdb_setup_network() has succeeded, even if the network thread
+     * could not be created. Tracked separately from $networkStarted so that a
+     * partial initialization is never mistaken for a "not set up" state (which
+     * would cause a second fdb_setup_network() call and an unjoinable network
+     * thread at shutdown). reset/rolled back in rollbackNetworkSetup() and
+     * stopNetwork().
+     */
+    private bool $networkSetup = false;
+
     private ?CData $networkThread = null;
 
     /** @var \FFI\CData|null Handle returned by dlopen('libfdb_c.so'), closed in stopNetwork(). */
@@ -216,39 +226,95 @@ final class NativeClient
             return;
         }
 
-        $this->checkError($this->fdb->fdb_setup_network());
+        try {
+            if (!$this->networkSetup) {
+                $this->checkError($this->fdb->fdb_setup_network());
+                $this->networkSetup = true;
+            }
 
-        $this->networkThread = $this->pthread->new('pthread_t');
+            $this->networkThread = $this->pthread->new('pthread_t');
 
-        $fdbHandle = $this->libdl->dlopen('libfdb_c.so', self::RTLD_LAZY);
-        if ($fdbHandle === null || FFI::isNull($fdbHandle)) {
-            throw new \RuntimeException('Failed to dlopen libfdb_c.so: ' . FFI::string($this->libdl->dlerror()));
-        }
-        $this->fdbLibraryHandle = $fdbHandle;
+            $fdbHandle = $this->libdl->dlopen('libfdb_c.so', self::RTLD_LAZY);
+            if ($fdbHandle === null || FFI::isNull($fdbHandle)) {
+                throw new \RuntimeException('Failed to dlopen libfdb_c.so: ' . $this->lastDlError());
+            }
+            $this->fdbLibraryHandle = $fdbHandle;
 
-        $runNetworkPtr = $this->libdl->dlsym($fdbHandle, 'fdb_run_network');
-        if ($runNetworkPtr === null || FFI::isNull($runNetworkPtr)) {
-            throw new \RuntimeException(
-                'Failed to dlsym fdb_run_network: ' . FFI::string($this->libdl->dlerror()),
+            $runNetworkPtr = $this->libdl->dlsym($fdbHandle, 'fdb_run_network');
+            if ($runNetworkPtr === null || FFI::isNull($runNetworkPtr)) {
+                throw new \RuntimeException(
+                    'Failed to dlsym fdb_run_network: ' . $this->lastDlError(),
+                );
+            }
+
+            $threadFuncType = $this->pthread->type('thread_func');
+            \assert($threadFuncType instanceof \FFI\CType);
+
+            $funcPtr = FFI::cast($threadFuncType, $runNetworkPtr);
+
+            \assert($this->networkThread instanceof \FFI\CData);
+            $result = $this->pthread->pthread_create(
+                FFI::addr($this->networkThread),
+                null,
+                $funcPtr,
+                null,
             );
-        }
 
-        $funcPtr = FFI::cast($this->pthread->type('thread_func'), $runNetworkPtr);
+            if ($result !== 0) {
+                throw new \RuntimeException('Failed to create network thread: pthread_create returned ' . $result);
+            }
+        } catch (\Throwable $e) {
+            // fdb_setup_network() succeeded but a later step failed: roll the
+            // network back down (fdb_stop_network() is the documented cleanup
+            // when the network thread could not be created), release the
+            // dlopen'd handle and clear the setup flag, so the client is left
+            // in a consistent "not started" state that can be safely retried
+            // and whose shutdown path does not wedge.
+            $this->rollbackNetworkSetup();
 
-        $result = $this->pthread->pthread_create(
-            FFI::addr($this->networkThread),
-            null,
-            $funcPtr,
-            null,
-        );
-
-        if ($result !== 0) {
-            throw new \RuntimeException('Failed to create network thread: pthread_create returned ' . $result);
+            throw $e;
         }
 
         $this->networkStarted = true;
 
         register_shutdown_function($this->stopNetwork(...));
+    }
+
+    /**
+     * dlerror() returns NULL when no error occurred since the last call, so
+     * the message must never be passed to FFI::string() unchecked.
+     */
+    private function lastDlError(): string
+    {
+        $error = $this->libdl->dlerror();
+
+        if ($error === null || FFI::isNull($error)) {
+            return 'unknown dl error';
+        }
+
+        return FFI::string($error);
+    }
+
+    /**
+     * Reverts a partially initialized network (setup done, thread not running)
+     * back to a clean "never started" state. No-op when the network was never
+     * set up or is already fully started.
+     */
+    private function rollbackNetworkSetup(): void
+    {
+        if ($this->networkStarted || !$this->networkSetup) {
+            return;
+        }
+
+        $this->fdb->fdb_stop_network();
+        $this->networkSetup = false;
+
+        if ($this->fdbLibraryHandle instanceof \FFI\CData && !FFI::isNull($this->fdbLibraryHandle)) {
+            $this->libdl->dlclose($this->fdbLibraryHandle);
+            $this->fdbLibraryHandle = null;
+        }
+
+        $this->networkThread = null;
     }
 
     public function stopNetwork(): void
@@ -276,11 +342,18 @@ final class NativeClient
         }
 
         $this->networkStarted = false;
+        $this->networkSetup = false;
         $this->networkThread = null;
     }
 
     public function isNetworkStarted(): bool
     {
         return $this->networkStarted;
+    }
+
+    /** True once fdb_setup_network() has succeeded (possibly not started yet). */
+    public function isNetworkSetup(): bool
+    {
+        return $this->networkSetup;
     }
 }
