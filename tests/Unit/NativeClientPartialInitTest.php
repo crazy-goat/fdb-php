@@ -260,8 +260,9 @@ final class NativeClientPartialInitTest extends TestCase
     private function installSingleton(NativeClient $client): void
     {
         $previous = new \ReflectionProperty(NativeClient::class, 'instance');
-        \assert($previous instanceof \ReflectionProperty);
-        $this->savedSingleton = $previous->getValue();
+        /** @var ?NativeClient $value — property is declared ?NativeClient */
+        $value = $previous->getValue();
+        $this->savedSingleton = $value;
 
         \Closure::bind(
             static function (?NativeClient $instance): void {
