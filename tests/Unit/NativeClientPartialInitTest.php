@@ -118,6 +118,8 @@ final class NativeClientPartialInitTest extends TestCase
 
     private static ?string $libraryPath = null;
 
+    private ?NativeClient $savedSingleton = null;
+
     public static function setUpBeforeClass(): void
     {
         self::$stub = self::buildStub();
@@ -233,7 +235,11 @@ final class NativeClientPartialInitTest extends TestCase
     public function setupFailureDoesNotStopAnything(): void
     {
         $this->stubSet('fdb_phpunit_stub_set_setup_result', 10);
+        // checkError() throws FDBException, whose constructor resolves the
+        // error message through NativeClient::getInstance() — on CI the real
+        // libfdb_c.so is not installed, so install the stub as the singleton.
         $client = $this->makeClient();
+        $this->installSingleton($client);
 
         try {
             $client->ensureNetwork();
@@ -245,6 +251,36 @@ final class NativeClientPartialInitTest extends TestCase
         self::assertSame(1, $this->counter('fdb_phpunit_stub_setup_calls'));
         self::assertSame(0, $this->counter('fdb_phpunit_stub_stop_calls'));
         self::assertFalse($client->isNetworkSetup());
+    }
+
+    /**
+     * Installs the stub-wired client as the NativeClient singleton and
+     * restores the previous value on teardown.
+     */
+    private function installSingleton(NativeClient $client): void
+    {
+        $previous = new \ReflectionProperty(NativeClient::class, 'instance');
+        \assert($previous instanceof \ReflectionProperty);
+        $this->savedSingleton = $previous->getValue();
+
+        \Closure::bind(
+            static function (?NativeClient $instance): void {
+                NativeClient::$instance = $instance;
+            },
+            null,
+            NativeClient::class,
+        )($client);
+    }
+
+    public function tearDown(): void
+    {
+        \Closure::bind(
+            static function (?NativeClient $instance): void {
+                NativeClient::$instance = $instance;
+            },
+            null,
+            NativeClient::class,
+        )($this->savedSingleton);
     }
 
     // -- Stub library -------------------------------------------------------
