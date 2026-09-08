@@ -15,6 +15,28 @@
   `tests/Unit/DirectoryDoublePrefixTest.php` and functional tests in
   `tests/Integration/DirectoryTest.php` cover both the empty and
   non-empty content subspace cases.
+- [#47] `NativeClient::ensureNetwork()` previously left the client in a wedged,
+  inconsistent state when initialization failed part-way through: if
+  `fdb_setup_network()` succeeded but a later step (`dlopen`, `dlsym`,
+  `pthread_create`) threw, `networkStarted` stayed `false` even though the
+  network thread loop was already set up. A retry then called
+  `fdb_setup_network()` a second time (error 2200: network already set up),
+  no shutdown handler was registered and `fdb_stop_network()` was never
+  called, so the process could not be shut down cleanly. The fact that
+  `fdb_setup_network()` has succeeded is now tracked separately
+  (`isNetworkSetup()`) and any failure after setup triggers a consistent
+  rollback — `fdb_stop_network()` (the documented cleanup when the network
+  thread cannot be created), releasing the `dlopen`'d library handle and
+  clearing both flags — so the client is left in a clean "not started" state
+  that can be retried safely and whose shutdown path cannot wedge. As part of
+  this the `dlerror()` message is now NULL-checked before `FFI::string()`
+  (dlerror returns NULL when no error occurred, which previously caused a
+  `TypeError` instead of the intended exception). Coverage:
+  `tests/Unit/NativeClientPartialInitTest.php` (5 cases against a compiled
+  stub library, failure injection at setup / dlopen / dlsym / pthread_create,
+  no live cluster needed) and
+  `tests/Integration/NetworkLifecycleTest::networkCanBeStoppedAndRestarted`
+  (full stop → re-setup → restart round trip against a live cluster).
 - [#38] `Transaction::snapshot()` no longer caches the `Snapshot` on its
   parent `Transaction`. The cached instance held a strong back-reference to
   the transaction, forming a reference cycle
