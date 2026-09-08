@@ -22,6 +22,17 @@ abstract class Future
         return (bool) $this->client->fdb->fdb_future_is_ready($this->fpointer);
     }
 
+    /**
+     * Reports whether the future resolved to an error. Only meaningful once
+     * the future is ready — call isReady() first or blockUntilReady() via
+     * await(). Complements fdb_future_get_error(), which returns the actual
+     * error code (0 when the future succeeded).
+     */
+    public function isError(): bool
+    {
+        return (bool) $this->client->fdb->fdb_future_is_error($this->fpointer);
+    }
+
     public function cancel(): void
     {
         $this->client->fdb->fdb_future_cancel($this->fpointer);

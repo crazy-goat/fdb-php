@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- [#98] Bound the two remaining future accessors exported by `libfdb_c`:
+  `fdb_future_is_error` is exposed as `Future::isError(): bool`, letting a
+  ready future be checked for failure without calling
+  `fdb_future_get_error` and branching on the code, and `fdb_future_get_bool`
+  is exposed through the new `CrazyGoat\FoundationDB\Future\FutureBool`
+  future type (the result accessor for boolean-resolving futures, and a
+  prerequisite for the blob granule API). Unit tests in
+  `tests/Unit/FutureBoolTest.php` exercise the real `Future` code paths
+  against a compiled stub of `libfdb_c`; integration tests in
+  `tests/Integration/FutureErrorTest.php` verify `isError()` against a live
+  cluster.
 - [#95] `Transaction::getConflictingKeyRanges()` and
   `Transaction::getConflictingKeys()`. After a `not_committed` (1020) error,
   and with `TransactionOptions::setReportConflictingKeys()` enabled, the
