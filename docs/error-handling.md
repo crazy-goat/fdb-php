@@ -73,6 +73,38 @@ $db->transact(function (Transaction $tr) {
 
 The retry loop calls `$tr->onError($code)->await()` which either resets the transaction for retry or throws if the error is not retryable.
 
+## Conflicting Key Ranges
+
+When a transaction fails to commit with `not_committed` (1020), the server can
+report the key ranges that caused the conflict. Enable reporting with
+`TransactionOptions::setReportConflictingKeys()` **before** the transaction
+runs, then read the ranges after the failed `commit()` and before
+`reset()`/`onError()`:
+
+```php
+$tr = $db->createTransaction();
+$tr->options()->setReportConflictingKeys();
+$old = $tr->get($key)->await();
+// ... a concurrent transaction commits ...
+$tr->set($key, $newValue);
+try {
+    $tr->commit()->await();
+} catch (FDBException $e) {
+    if ($e->fdbCode === 1020) {
+        foreach ($tr->getConflictingKeyRanges() as $range) {
+            echo "conflict: {$range['begin']} .. {$range['end']}\n";
+        }
+    }
+}
+```
+
+- `Transaction::getConflictingKeyRanges()` returns
+  `list<array{begin: string, end: string}>` in user key space.
+- `Transaction::getConflictingKeys()` returns the raw rows
+  (`list<KeyValue>`, keys stripped of the `\xff\xff/transaction/conflicting_keys/`
+  prefix, value `"1"` for a range start and `"0"` for its end).
+- Calling either method without the option enabled throws a `LogicException`.
+
 ## Other Exceptions
 
 ### DirectoryException
