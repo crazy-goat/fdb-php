@@ -28,6 +28,7 @@ These operate on raw byte strings and keep `string` parameters:
 | `byteMax($key, string $param)` | `string` | Byte-string maximum |
 | `byteMin($key, string $param)` | `string` | Byte-string minimum |
 | `compareAndClear($key, string $param)` | `string` | Clears key if current value equals param |
+| `appendIfFits($key, string $param)` | `string` | Appends param to the value only if the result still fits within the value size limit — a no-op otherwise |
 | `setVersionstampedKey($key, string $value)` | `string` | Sets key with versionstamp |
 | `setVersionstampedValue($key, string $param)` | `string` | Sets value with versionstamp |
 
@@ -102,6 +103,18 @@ $db->max('high_score', 999);
 $db->min('response_time_ms', 42);
 ```
 
+## Append If Fits
+
+Atomically appends bytes to the stored value, but only if the resulting value would
+still fit within the value size limit — otherwise the operation is silently a no-op:
+
+```php
+$tr->appendIfFits('log', 'more data');
+```
+
+Note: the stored value must be ≤ the value size limit (see [Size Limits](#size-limits));
+`appendIfFits()` never grows a value past that limit.
+
 ## Compare and Clear
 
 Atomically clears a key only if its current value matches the expected value:
@@ -143,9 +156,9 @@ $db->getInt('counter'); // ?int
 Atomic ops inherit the same key / value limits as regular writes:
 
 - key ≤ 10,000 bytes,
-- value / param ≤ 100,000 bytes (for `byteMax`, `byteMin`, `compareAndClear`,
-  `setVersionstampedKey`, `setVersionstampedValue`, and `atomicOp()` custom
-  byte params).
+- value / param ≤ 100,000 bytes (for `byteMax`, `byteMin`, `appendIfFits`,
+  `compareAndClear`, `setVersionstampedKey`, `setVersionstampedValue`, and
+  `atomicOp()` custom byte params).
 
 Exceeding the limit throws `\InvalidArgumentException` immediately at the
 atomic-op call site, before the FFI call, with the actual length that failed.
@@ -154,17 +167,30 @@ for the full table and the defensive 32-bit FFI guard.
 
 ## Versionstamped Operations
 
-Versionstamped operations embed the commit version into keys or values:
+Versionstamped operations embed the commit version into keys or values.
+The key / value parameter must contain the 10-byte placeholder
+`\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff`, and the position of that
+placeholder — as a 4-byte little-endian integer — must be appended to the
+end of the same parameter. The position bytes are stripped and the
+placeholder is replaced with the 10-byte commit version on commit:
 
 ```php
-$db->transact(function (Transaction $tr) {
-    // Key with versionstamp placeholder
-    $tr->setVersionstampedKey($keyWithPlaceholder, 'value');
+$ff = str_repeat("\xff", 10);
 
-    // Value with versionstamp placeholder
-    $tr->setVersionstampedValue('key', $valueWithPlaceholder);
+$db->transact(function (Transaction $tr) use ($ff) {
+    // Placeholder at offset 7 inside the key
+    $key = 'orders/' . $ff . '/data' . pack('V', 7);
+    $tr->setVersionstampedKey($key, 'value');
+
+    // Placeholder at offset 6 inside the value
+    $value = 'order:' . $ff . '/ok' . pack('V', 6);
+    $tr->setVersionstampedValue('key', $value);
 
     // Get the versionstamp after commit
     $vs = $tr->getVersionstamp(); // FutureKey, await after commit
 });
 ```
+
+These are also available as Database-level autocommit wrappers:
+`$db->setVersionstampedKey($key, $value)` and
+`$db->setVersionstampedValue($key, $value)`.

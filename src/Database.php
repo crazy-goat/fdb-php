@@ -334,6 +334,41 @@ final class Database implements Transactor, ReadTransactor
         });
     }
 
+    public function byteMax(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->byteMax($key, $param);
+        });
+    }
+
+    public function byteMin(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->byteMin($key, $param);
+        });
+    }
+
+    public function appendIfFits(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->appendIfFits($key, $param);
+        });
+    }
+
+    public function setVersionstampedKey(string $key, string $value): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $value): void {
+            $tr->setVersionstampedKey($key, $value);
+        });
+    }
+
+    public function setVersionstampedValue(string $key, string $param): void
+    {
+        $this->transact(function (Transaction $tr) use ($key, $param): void {
+            $tr->setVersionstampedValue($key, $param);
+        });
+    }
+
     public function getEstimatedRangeSizeBytes(string $begin, string $end): int
     {
         /** @var int */

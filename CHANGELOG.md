@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- [#89] Added the missing atomic operation shortcuts:
+  `Transaction::appendIfFits()` plus new Database-level autocommit wrappers
+  `byteMin()`, `byteMax()`, `appendIfFits()`, `setVersionstampedKey()` and
+  `setVersionstampedValue()`, so the Database API now covers the same set of
+  atomic operations as `Transaction`. Integration tests added in
+  `tests/Integration/DatabaseConvenienceTest.php`; `docs/atomic-operations.md`
+  updated.
+
 ### Fixed
 - [#42] `DirectoryLayer` no longer double-prepends the content subspace
   key when constructing a returned `DirectorySubspace`. The prefix stored

@@ -216,6 +216,11 @@ final class Transaction extends ReadTransaction implements Transactor
         $this->atomicOp(MutationType::SetVersionstampedValue, $key, $param);
     }
 
+    public function appendIfFits(string $key, string $param): void
+    {
+        $this->atomicOp(MutationType::AppendIfFits, $key, $param);
+    }
+
     public function addReadConflictRange(string $begin, string $end): void
     {
         $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
