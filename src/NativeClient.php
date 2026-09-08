@@ -46,6 +46,7 @@ final class NativeClient
         fdb_bool_t fdb_future_is_ready(FDBFuture* f);
         fdb_error_t fdb_future_get_error(FDBFuture* f);
         fdb_error_t fdb_future_get_int64(FDBFuture* f, int64_t* out);
+        fdb_error_t fdb_future_get_double(FDBFuture* f, double* out);
         fdb_error_t fdb_future_get_bool(FDBFuture* f, fdb_bool_t* out);
         fdb_error_t fdb_future_get_key(FDBFuture* f, const char** out_key, int* out_key_length);
         fdb_error_t fdb_future_get_value(
@@ -135,6 +136,8 @@ final class NativeClient
         FDBFuture* fdb_transaction_commit(FDBTransaction* tr);
         fdb_error_t fdb_transaction_get_committed_version(FDBTransaction* tr, int64_t* version);
         FDBFuture* fdb_transaction_get_approximate_size(FDBTransaction* tr);
+        FDBFuture* fdb_transaction_get_total_cost(FDBTransaction* tr);
+        FDBFuture* fdb_transaction_get_tag_throttled_duration(FDBTransaction* tr);
         FDBFuture* fdb_transaction_get_versionstamp(FDBTransaction* tr);
         FDBFuture* fdb_transaction_watch(FDBTransaction* tr, const char* key_name, int key_name_length);
         FDBFuture* fdb_transaction_on_error(FDBTransaction* tr, fdb_error_t error);

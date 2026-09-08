@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\FoundationDB;
 
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
+use CrazyGoat\FoundationDB\Future\FutureDouble;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
 use CrazyGoat\FoundationDB\Future\FutureKey;
 use CrazyGoat\FoundationDB\Future\FutureKeyArray;
@@ -59,6 +60,31 @@ class ReadTransaction
     {
         return new FutureInt64(
             $this->client->fdb->fdb_transaction_get_read_version($this->tpointer),
+            $this->client,
+        );
+    }
+
+    /**
+     * Total accumulated cost of the transaction so far, in the cluster's
+     * cost units (as used by cost-based throttling and the 10,000,000-unit
+     * per-transaction cost limit).
+     */
+    public function getTotalCost(): FutureInt64
+    {
+        return new FutureInt64(
+            $this->client->fdb->fdb_transaction_get_total_cost($this->tpointer),
+            $this->client,
+        );
+    }
+
+    /**
+     * Number of seconds this transaction has been throttled due to tag
+     * throttling so far.
+     */
+    public function getTagThrottledDuration(): FutureDouble
+    {
+        return new FutureDouble(
+            $this->client->fdb->fdb_transaction_get_tag_throttled_duration($this->tpointer),
             $this->client,
         );
     }

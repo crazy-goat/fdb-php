@@ -170,6 +170,12 @@ $size = $tr->getApproximateSize(): FutureInt64;
 
 // Get the versionstamp (after commit) — returns the versionstamp key
 $versionstamp = $tr->getVersionstamp(): FutureKey;
+
+// Get the transaction's accumulated cost (cluster cost units)
+$cost = $tr->getTotalCost(): FutureInt64;        // available on Transaction and Snapshot
+
+// Seconds this transaction has been throttled by tag throttling
+$duration = $tr->getTagThrottledDuration(): FutureDouble; // available on Transaction and Snapshot
 ```
 
 ---
