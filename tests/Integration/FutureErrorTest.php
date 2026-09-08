@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
+use CrazyGoat\FoundationDB\FDBException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
@@ -14,39 +15,65 @@ use PHPUnit\Framework\TestCase;
  * `FutureBool` itself has no live producer yet (its first consumer, the blob
  * granule API in #93, is not bound), so the bool path is unit-tested against
  * a compiled libfdb_c stub in `tests/Unit/FutureBoolTest.php`. Here we verify
- * `isError()` against the real client: a future read from a transaction that
- * has been reset is in the error state, while a fresh read-version future is
- * not.
+ * `isError()` against the real client: a pending future is not ready (and
+ * isError() is only meaningful once ready), a resolved future is not in
+ * error, and a commit that fails with a conflict resolves to the error state.
  */
 final class FutureErrorTest extends TestCase
 {
     use DatabaseCleanupTrait;
 
     #[Test]
-    public function freshFutureIsNotInErrorState(): void
+    public function pendingFutureIsNotReadyAndReadyFutureIsNotInErrorState(): void
     {
         $tr = $this->getDatabase()->createTransaction();
         $future = $tr->getReadVersion();
 
+        // A freshly created future is still pending: isError() must not be
+        // consulted before readiness (fdb_future_is_error is only defined
+        // for ready futures).
+        self::assertFalse($future->isReady());
+
+        self::assertGreaterThan(0, $future->await());
         self::assertTrue($future->isReady());
         self::assertFalse($future->isError());
-        self::assertGreaterThan(0, $future->await());
     }
 
     #[Test]
-    public function futureOfAResetTransactionReportsErrorState(): void
+    public function failedCommitResolvesToErrorState(): void
     {
-        $tr = $this->getDatabase()->createTransaction();
-        $future = $tr->getReadVersion();
+        $db = $this->getDatabase();
+        $key = 'test/future-error/key';
 
-        // Resetting the transaction invalidates futures created from it:
-        // they resolve to an error immediately.
-        $tr->reset();
+        $trA = $db->createTransaction();
+        $trA->set($key, 'value-a');
+        $trA->commit()->await();
 
-        self::assertTrue($future->isReady());
-        self::assertTrue($future->isError());
+        // Transaction B reads the key, A' overwrites it in between, so B's
+        // commit fails with 1020 (not_committed): the commit future becomes
+        // ready and resolves to an error.
+        $trB = $db->createTransaction();
+        self::assertSame('value-a', $trB->get($key)->await());
 
-        self::expectException(\CrazyGoat\FoundationDB\FDBException::class);
-        $future->await();
+        $trC = $db->createTransaction();
+        $trC->set($key, 'value-c');
+        $trC->commit()->await();
+
+        $trB->set($key, 'value-b');
+        $commit = $trB->commit();
+
+        $failed = false;
+        try {
+            $commit->await();
+        } catch (FDBException) {
+            $failed = true;
+        }
+        self::assertTrue($failed, 'conflicting commit must fail');
+
+        // The commit future has now resolved: ready AND in error state —
+        // isError() can distinguish this from a successful future without
+        // parsing error codes.
+        self::assertTrue($commit->isReady());
+        self::assertTrue($commit->isError());
     }
 }
