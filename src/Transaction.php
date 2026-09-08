@@ -15,6 +15,19 @@ use FFI\CData;
 
 final class Transaction extends ReadTransaction implements Transactor
 {
+    /**
+     * Special key-space prefix under which conflicting key ranges are published
+     * after a not_committed (1020) error, when the
+     * TransactionOptions::setReportConflictingKeys() option is enabled.
+     *
+     * "\x01" for the start of a conflicting range and "\x00" for its end.
+     */
+    private const CONFLICTING_KEYS_PREFIX = "\xff\xff/transaction/conflicting_keys/";
+
+    private const OPTION_REPORT_CONFLICTING_KEYS = 712;
+
+    private bool $reportsConflictingKeys = false;
+
     public function __construct(
         CData $tpointer,
         Database $db,
@@ -314,6 +327,88 @@ final class Transaction extends ReadTransaction implements Transactor
                 $valueLength,
             ),
         );
+
+        if ($option === self::OPTION_REPORT_CONFLICTING_KEYS) {
+            $this->reportsConflictingKeys = true;
+        }
+    }
+
+    /**
+     * Returns the raw conflicting-keys rows from the special key space.
+     *
+     * Each row's key is CONFLICTING_KEYS_PREFIX followed by the user key and its
+     * value is "1" for the start of a conflicting range or "0" for its end.
+     *
+     * Requires TransactionOptions::setReportConflictingKeys() to have been set on
+     * this transaction, and must be called after a failing commit() and before
+     * reset()/onError().
+     *
+     * @return list<KeyValue>
+     *
+     * @throws \LogicException if setReportConflictingKeys() was not enabled
+     */
+    public function getConflictingKeys(): array
+    {
+        if (!$this->reportsConflictingKeys) {
+            throw new \LogicException(
+                'Conflicting keys are not being reported. Enable the option with '
+                . 'TransactionOptions::setReportConflictingKeys() before the transaction runs.',
+            );
+        }
+
+        $rows = $this->getRangeAll(self::CONFLICTING_KEYS_PREFIX, self::CONFLICTING_KEYS_PREFIX . "\xff");
+
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = new KeyValue(substr($row->key, strlen(self::CONFLICTING_KEYS_PREFIX)), $row->value);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns the key ranges that caused the transaction's not_committed (1020)
+     * conflict, as reported by the server when
+     * TransactionOptions::setReportConflictingKeys() is enabled.
+     *
+     * Must be called after the failing commit() and before reset()/onError().
+     *
+     * @return list<array{begin: string, end: string}>
+     *
+     * @throws \LogicException if setReportConflictingKeys() was not enabled
+     * @throws \RuntimeException if the reported markers cannot be paired into ranges
+     */
+    public function getConflictingKeyRanges(): array
+    {
+        $ranges = [];
+        $begin = null;
+
+        foreach ($this->getConflictingKeys() as $row) {
+            if ($row->value === "1") {
+                if ($begin !== null) {
+                    throw new \RuntimeException('Malformed conflicting keys: nested range start marker');
+                }
+                $begin = $row->key;
+            } elseif ($row->value === "0") {
+                if ($begin === null) {
+                    throw new \RuntimeException('Malformed conflicting keys: range end marker without start');
+                }
+                $ranges[] = ['begin' => $begin, 'end' => $row->key];
+                $begin = null;
+            } else {
+                throw new \RuntimeException(sprintf(
+                    'Malformed conflicting keys: unexpected marker value %d at key "%s"',
+                    ord($row->value),
+                    $row->key,
+                ));
+            }
+        }
+
+        if ($begin !== null) {
+            throw new \RuntimeException('Malformed conflicting keys: range start marker without end');
+        }
+
+        return $ranges;
     }
 
     /**

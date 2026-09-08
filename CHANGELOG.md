@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- [#95] `Transaction::getConflictingKeyRanges()` and
+  `Transaction::getConflictingKeys()`. After a `not_committed` (1020) error,
+  and with `TransactionOptions::setReportConflictingKeys()` enabled, the
+  conflicting ranges that caused the conflict can now be read without knowing
+  the `\xff\xff/transaction/conflicting_keys/` special-key-space layout by
+  hand. `getConflictingKeyRanges()` pairs the `1`/`0` start/end markers into
+  `list<array{begin: string, end: string}>`; `getConflictingKeys()` returns the
+  raw special-key rows with the prefix stripped. Calling either method without
+  the option enabled throws a `LogicException`. Integration test in
+  `tests/Integration/ConflictingKeysTest.php`; documented in
+  `docs/error-handling.md`.
 - [#89] Added the missing atomic operation shortcuts:
   `Transaction::appendIfFits()` plus new Database-level autocommit wrappers
   `byteMin()`, `byteMax()`, `appendIfFits()`, `setVersionstampedKey()` and
