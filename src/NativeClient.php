@@ -247,10 +247,7 @@ final class NativeClient
                 );
             }
 
-            $threadFuncType = $this->pthread->type('thread_func');
-            \assert($threadFuncType instanceof \FFI\CType);
-
-            $funcPtr = FFI::cast($threadFuncType, $runNetworkPtr);
+            $funcPtr = FFI::cast($this->pthread->type('thread_func'), $runNetworkPtr);
 
             \assert($this->networkThread instanceof \FFI\CData);
             $result = $this->pthread->pthread_create(
