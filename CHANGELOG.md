@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- [#90] `ReadTransaction::getTotalCost()` and
+  `ReadTransaction::getTagThrottledDuration()` (backed by
+  `fdb_transaction_get_total_cost` and
+  `fdb_transaction_get_tag_throttled_duration`), exposing the transaction
+  introspection needed to reason about cost-based and tag throttling. The
+  latter resolves to a double, so `fdb_future_get_double` was bound through
+  the new `CrazyGoat\FoundationDB\Future\FutureDouble` future type. Both
+  methods are available on `Transaction` and `Snapshot`. Unit tests in
+  `tests/Unit/FutureDoubleTest.php`; integration tests in
+  `tests/Integration/TransactionIntrospectionTest.php`;
+  `docs/transactions.md` updated.
 - [#98] Bound `fdb_future_get_bool`, the result accessor for boolean-resolving
   futures, through the new `CrazyGoat\FoundationDB\Future\FutureBool` future
   type (a prerequisite for the blob granule API). Also added
