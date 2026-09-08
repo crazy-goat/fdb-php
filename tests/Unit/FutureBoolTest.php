@@ -70,6 +70,20 @@ final class FutureBoolTest extends TestCase
     }
 
     #[Test]
+    public function isErrorIsCachedAndSurvivesMemoryRelease(): void
+    {
+        self::setStubBool(1);
+        $future = self::makeFuture();
+
+        self::assertSame(true, $future->await());
+
+        // After await() the future's memory is released; the stub now returns
+        // garbage from fdb_future_get_error(). isError() must answer from the
+        // state captured before the release, not re-query the handle.
+        self::assertFalse($future->isError());
+    }
+
+    #[Test]
     public function isErrorReportsTrueForAFutureInErrorState(): void
     {
         $this->setStubError(1);
@@ -84,15 +98,19 @@ final class FutureBoolTest extends TestCase
             #include <stdint.h>
             static int g_is_error = 0;
             static int g_bool_value = 1;
+            static int g_released = 0;
             void fdb_future_destroy(void* f) { (void)f; }
-            void fdb_future_release_memory(void* f) { (void)f; }
+            void fdb_future_release_memory(void* f) { (void)f; g_released = 1; }
             void fdb_future_cancel(void* f) { (void)f; }
             int fdb_future_block_until_ready(void* f) { (void)f; return 0; }
             int fdb_future_is_ready(void* f) { (void)f; return 1; }
-            int fdb_future_get_error(void* f) { (void)f; return g_is_error ? 1020 : 0; }
+            // Mimics the real client: querying the error code after the
+            // future's memory has been released is undefined behavior — the
+            // stub returns garbage (non-zero) to catch that path.
+            int fdb_future_get_error(void* f) { (void)f; return (g_is_error || g_released) ? 1020 : 0; }
             int fdb_future_get_bool(void* f, int* out) { (void)f; *out = g_bool_value; return g_is_error ? 1020 : 0; }
-            void fdb_phpunit_stub_set_error(int v) { g_is_error = v; }
-            void fdb_phpunit_stub_set_bool(int v) { g_bool_value = v; }
+            void fdb_phpunit_stub_set_error(int v) { g_is_error = v; g_released = 0; }
+            void fdb_phpunit_stub_set_bool(int v) { g_bool_value = v; g_released = 0; }
             C;
 
         $header = <<<'C'
