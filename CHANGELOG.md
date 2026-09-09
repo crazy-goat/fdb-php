@@ -74,6 +74,43 @@
   updated.
 
 ### Fixed
+- [#43] `AdminClient` now validates every caller-supplied input against a
+  fixed-byte allow-list at the PHP trust boundary, replacing the previous
+  behaviour of splicing raw caller input directly into privileged Special
+  Keys (`\xff\xff/management/tenant/map/<name>`,
+  `\xff\xff/management/excluded/<addr>`,
+  `\xff\xff/management/force_recovery`, `\xff\xff/configuration/redundancy`,
+  `\xff\xff/configuration/storage`). Six admin methods are gated
+  (`createTenant`, `deleteTenant`, `excludeServer`, `includeServer`,
+  `rebootWorker`, `configure`, `forceRecovery`):
+
+  | Method            | Validated input                  | Allow-list                       | Max length | On violation                                |
+  |-------------------|----------------------------------|----------------------------------|------------|---------------------------------------------|
+  | `createTenant`    | tenant name                      | `[A-Za-z0-9._-]`, start alnum    | 256 bytes  | `\InvalidArgumentException` (sync)          |
+  | `deleteTenant`    | tenant name                      | `[A-Za-z0-9._-]`, start alnum    | 256 bytes  | `\InvalidArgumentException` (sync)          |
+  | `excludeServer`   | server address (host:port)       | `[A-Za-z0-9._:-]`                | 256 bytes  | `\InvalidArgumentException` (sync)          |
+  | `includeServer`   | server address (host:port)       | `[A-Za-z0-9._:-]`                | 256 bytes  | `\InvalidArgumentException` (sync)          |
+  | `rebootWorker`    | server address                   | `[A-Za-z0-9._:-]`                | 256 bytes  | `\InvalidArgumentException` (sync)          |
+  | `configure`       | 1 or 2 whitespace-split tokens   | `[A-Za-z0-9_-]` per token        | 64 bytes   | `\InvalidArgumentException` (sync)          |
+  | `forceRecovery`   | dcId                             | `[A-Za-z0-9_-]`                  | 64 bytes   | `\InvalidArgumentException` (sync)          |
+
+  Previously, a tenant name containing `/` would silently write into
+  `\xff\xff/management/tenant/map/foo/bar` instead of the intended tenant
+  key, a server address like `127.0.0.1/24` would silently produce the
+  Special Key `\xff\xff/management/excluded/127.0.0.1/24`, and
+  `configure()` accepted any whitespace-split string with no token
+  validation. The fix routes every caller-supplied identifier through
+  private static helpers (`AdminClient::validateTenantName`,
+  `validateAddress`, `validateToken`, `parseConfiguration`) that throw
+  `\InvalidArgumentException` with a printable rendering of the offending
+  input before any transaction begins — so a malformed input can no longer
+  reach FDB, and the failure surfaces at the call site instead of as an
+  opaque commit-time error. Bounds checks are documented in the
+  `AdminClient` class-level doc-block and in `docs/admin.md`; the
+  pure-validation logic is covered by 47 cases in
+  `tests/Unit/AdminClientInputValidationTest.php`; transactional happy and
+  rejection paths are covered by 27 cases in
+  `tests/Integration/AdminInputValidationTest.php`.
 - [#42] `DirectoryLayer` no longer double-prepends the content subspace
   key when constructing a returned `DirectorySubspace`. The prefix stored
   in a directory node already includes the content subspace key
@@ -129,6 +166,19 @@
   `readTransact()` loops against a live cluster.
 
 ### Changed
+- [#43] `AdminClient::configure()` and `AdminClient::forceRecovery()` are
+  deprecated and now throw `\LogicException` synchronously (after input
+  validation) instead of writing to special keys that do not exist in the
+  FoundationDB special-key space. Verified against a live cluster: a write to
+  `\xff\xff/configuration/redundancy` (or `/storage`) and to
+  `\xff\xff/management/force_recovery` fails at commit with
+  `special_keys_no_module_found` — the documented `\xff\xff/configuration/`
+  module only covers process class types and coordinators, and forced
+  recovery is an RPC to the cluster controller (`fdbcli`
+  `force_recovery_with_data_loss`), not a special key. Both methods keep
+  validating their arguments first, so a malformed string still fails with a
+  precise `\InvalidArgumentException`. Use the `fdbcli` `configure` and
+  `force_recovery_with_data_loss` commands instead. `docs/admin.md` updated.
 - [#54] Maintainability refactor (`src/Directory/HighContentionAllocator.php`,
   `src/Directory/DirectoryLayer.php`). `DirectoryLayer` now uses the imported
   `CrazyGoat\FoundationDB\Subspace` class (via `use`) instead of repeating the

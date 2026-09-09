@@ -170,4 +170,41 @@ final class AdminClientTest extends TestCase
             self::assertLessThan($end, $key, "Tenant key for '$name' must be < end key");
         }
     }
+
+    // -- Unsupported operations (#43) ---------------------------------------
+
+    #[Test]
+    public function configureThrowsLogicExceptionForValidInput(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('not supported');
+
+        $this->createAdminClient()->configure('double ssd');
+    }
+
+    #[Test]
+    public function configureStillValidatesInputBeforeThrowing(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('disallowed character');
+
+        $this->createAdminClient()->configure('dou.ble ssd');
+    }
+
+    #[Test]
+    public function forceRecoveryThrowsLogicExceptionForValidInput(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('force_recovery_with_data_loss');
+
+        $this->createAdminClient()->forceRecovery('dc1');
+    }
+
+    #[Test]
+    public function forceRecoveryStillValidatesInputBeforeThrowing(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->createAdminClient()->forceRecovery('dc/1');
+    }
 }
