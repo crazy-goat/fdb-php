@@ -6,6 +6,7 @@ namespace CrazyGoat\FoundationDB;
 
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureDouble;
+use CrazyGoat\FoundationDB\Future\FutureGranuleSummaryArray;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
 use CrazyGoat\FoundationDB\Future\FutureKey;
 use CrazyGoat\FoundationDB\Future\FutureKeyArray;
@@ -13,6 +14,7 @@ use CrazyGoat\FoundationDB\Future\FutureKeyRangeArray;
 use CrazyGoat\FoundationDB\Future\FutureMappedKeyValueArray;
 use CrazyGoat\FoundationDB\Future\FutureStringArray;
 use CrazyGoat\FoundationDB\Future\FutureValue;
+use FFI;
 use FFI\CData;
 
 class ReadTransaction
@@ -147,6 +149,147 @@ class ReadTransaction
                 $beginLength,
                 $end,
                 $endLength,
+                $rangeLimit,
+            ),
+            $this->client,
+        );
+    }
+
+    /**
+     * Read the blob granules covering the given range between
+     * `$beginVersion` and `$readVersion`. Backed by
+     * `fdb_transaction_read_blob_granules`, which returns an `FDBResult`
+     * (a synchronous computation result) rather than a future — the call
+     * blocks until the granule files have been fetched and materialized.
+     *
+     * File data is fetched through the supplied `BlobGranuleLoader`
+     * (`FDBReadBlobGranuleContext` callbacks). When
+     * `$debugNoMaterialize` is true the loader is not called at all and
+     * only the request to the blob workers is issued (useful for testing).
+     *
+     * @param int|null $readVersion Read version; null for `Database::LATEST_VERSION` (-2),
+     *                              meaning "use the transaction's read version".
+     *
+     * @return list<KeyValue> The materialized key-value pairs, sorted by key.
+     */
+    public function readBlobGranules(
+        string $begin,
+        string $end,
+        int $beginVersion,
+        ?BlobGranuleLoader $loader = null,
+        ?int $readVersion = null,
+        bool $debugNoMaterialize = false,
+        int $granuleParallelism = 1,
+    ): array {
+        if (!$loader instanceof \CrazyGoat\FoundationDB\BlobGranuleLoader && !$debugNoMaterialize) {
+            throw new \InvalidArgumentException(
+                'readBlobGranules() requires a BlobGranuleLoader unless $debugNoMaterialize is true.',
+            );
+        }
+
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+        $readVersion ??= Database::LATEST_VERSION;
+        $context = new BlobGranuleReadContext(
+            $this->client,
+            $loader ?? new class implements BlobGranuleLoader {
+                public function startLoad(string $filename, int $offset, int $length, int $fullFileLength): int
+                {
+                    return 0;
+                }
+
+                public function getLoad(int $loadId): string
+                {
+                    return '';
+                }
+
+                public function freeLoad(int $loadId): void
+                {
+                }
+            },
+            $granuleParallelism,
+        );
+        $context->setDebugNoMaterialize($debugNoMaterialize);
+
+        $resultPointer = $this->client->fdb->fdb_transaction_read_blob_granules(
+            $this->tpointer,
+            $begin,
+            $beginLength,
+            $end,
+            $endLength,
+            $beginVersion,
+            $readVersion,
+            $context->toCData(),
+        );
+
+        if ($resultPointer === null) {
+            return [];
+        }
+
+        try {
+            $outKv = $this->client->fdb->new('FDBKeyValue*');
+            $outCount = $this->client->fdb->new('int');
+            $outMore = $this->client->fdb->new('fdb_bool_t');
+
+            $this->client->checkError(
+                $this->client->fdb->fdb_result_get_keyvalue_array(
+                    $resultPointer,
+                    FFI::addr($outKv),
+                    FFI::addr($outCount),
+                    FFI::addr($outMore),
+                ),
+            );
+
+            $count = $outCount->cdata;
+            $kvs = [];
+
+            for ($i = 0; $i < $count; $i++) {
+                $kv = $outKv[$i];
+                $kvs[] = new KeyValue(
+                    FFI::string($kv->key, $kv->key_length),
+                    FFI::string($kv->value, $kv->value_length),
+                );
+            }
+
+            return $kvs;
+        } finally {
+            $this->client->fdb->fdb_result_destroy($resultPointer);
+        }
+    }
+
+    /**
+     * Summarize the blob granules within the given range at (or before) the
+     * given version. Backed by `fdb_transaction_summarize_blob_granules`.
+     *
+     * Note: `rangeLimit` must be at least 1 — the client library asserts
+     * `chunkLimit > 0` for this call (error 4100 otherwise).
+     *
+     * @param int|null $summaryVersion Summary version; null for the transaction's current read version.
+     * @param int      $rangeLimit     Maximum number of granules to summarize (must be >= 1).
+     */
+    public function summarizeBlobGranules(
+        string $begin,
+        string $end,
+        ?int $summaryVersion = null,
+        int $rangeLimit = 100,
+    ): FutureGranuleSummaryArray {
+        if ($rangeLimit < 1) {
+            throw new \InvalidArgumentException('summarizeBlobGranules() requires rangeLimit >= 1.');
+        }
+
+        $summaryVersion ??= $this->getReadVersion()->await();
+
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        return new FutureGranuleSummaryArray(
+            $this->client->fdb->fdb_transaction_summarize_blob_granules(
+                $this->tpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+                $summaryVersion,
                 $rangeLimit,
             ),
             $this->client,
