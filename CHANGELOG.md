@@ -3,6 +3,27 @@
 ## [Unreleased]
 
 ### Added
+- [#115] Chunked values: transparent handling of single values above the
+  100,000 B per-value limit, split into ordered chunks under a dedicated
+  `\x00`-namespaced key space. `Transaction::setValueChunked(string|KeyConvertible
+  $key, string $value, int $chunkSize = 100000)` (atomic single-transaction
+  write with stale-chunk clearing, capped at 8,000,000 B with the new
+  `CrazyGoat\FoundationDB\ChunkedValueTooLargeException` above the cap),
+  `Database::setValueChunked(..., bool $atomic = true)` (atomic mode via
+  `transact()`, or `atomic: false` — generation scheme: budget-sized chunk
+  groups across multiple transactions plus an atomic metadata swap, no size
+  cap, self-cleaning orphaned chunks), `ReadTransaction::getValueChunked()`
+  (one range read per active generation; `null` for a missing key, `""` for
+  an empty value, the new `CrazyGoat\FoundationDB\ChunkedValueCorruptedException`
+  on malformed metadata or mismatched chunk data; snapshot reads supported)
+  and `Transaction::deleteValueChunked()` / `Database::deleteValueChunked()`
+  (one range clear removes meta, all chunks and all generations). Key-space
+  layout owned by the `@internal Chunk\ChunkKeyCodec` (magic-signed metadata
+  record `FDBCK1` + total length + chunk count + generation). Unit tests
+  (`tests/Unit/ChunkKeyCodecTest.php`) verify the storage-format invariants;
+  integration tests in `tests/Integration/ChunkedValuesTest.php`; documented
+  in `docs/chunked-values.md`.
+
 - [#116] Batch write helpers with up-front mutation-budget accounting:
   `Transaction::setBatch(iterable $pairs)` (queues `[key, value]` pairs —
   `string` or `KeyConvertible` keys — into the current transaction; the

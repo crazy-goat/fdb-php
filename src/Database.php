@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Chunk\ChunkKeyCodec;
 use CrazyGoat\FoundationDB\Future\FutureVoid;
 use CrazyGoat\FoundationDB\Option\DatabaseOptions;
 use FFI;
@@ -126,6 +127,138 @@ final class Database implements Transactor, ReadTransactor
     {
         $this->transact(function (Transaction $tr) use ($key, $value): void {
             $tr->set($key, $value);
+        });
+    }
+
+    /**
+     * Write a chunked value (see `Transaction::setValueChunked()` for the
+     * atomic mode and `Chunk\ChunkKeyCodec` for the key-space layout).
+     *
+     * - `atomic: true` (default): the whole write runs inside a single
+     *   retried transaction — fully atomic, capped at
+     *   `MutationBudget::SPLIT_TARGET_BYTES` (8,000,000 B), with
+     *   `ChunkedValueTooLargeException` above the cap.
+     * - `atomic: false`: the write is split across multiple transactions
+     *   using the generation scheme — no size cap. New chunks are written
+     *   under `generation + 1` in budget-sized groups (each group committed
+     *   in its own retried transaction), then a final micro-transaction
+     *   atomically swaps the metadata record to the new generation and clears
+     *   everything below it (the previous generation plus any orphaned
+     *   garbage from interrupted attempts). Readers always see either the
+     *   whole old or the whole new value, because the read path selects
+     *   chunks by the generation stored in the metadata. A crash between the
+     *   chunk transactions and the metadata swap leaves only orphaned
+     *   chunks — reads are unaffected, and the next non-atomic write to the
+     *   key cleans them up.
+     *
+     * @throws \InvalidArgumentException        when `$chunkSize` is out of
+     *                                          range or the key/value violate
+     *                                          the FDB size limits
+     * @throws ChunkedValueTooLargeException    in atomic mode when the value
+     *                                          exceeds the cap
+     */
+    public function setValueChunked(
+        string|KeyConvertible $key,
+        string $value,
+        int $chunkSize = Transaction::DEFAULT_CHUNK_SIZE,
+        bool $atomic = true,
+    ): void {
+        if ($atomic) {
+            $this->transact(static function (Transaction $tr) use ($key, $value, $chunkSize): void {
+                $tr->setValueChunked($key, $value, $chunkSize);
+            });
+
+            return;
+        }
+
+        $resolvedKey = $key instanceof KeyConvertible ? $key->asFoundationDbKey() : $key;
+        KeyValueLimits::assertValidKey($resolvedKey);
+        Transaction::assertChunkSize($chunkSize);
+
+        $totalLength = strlen($value);
+        $chunkCount = $totalLength === 0 ? 0 : intdiv($totalLength - 1, $chunkSize) + 1;
+
+        // Current generation; a corrupt record is ignored for writing — the
+        // generation restarts at 0 and the swap's range clear below removes
+        // the foreign bytes along with the old chunks.
+        $metaRaw = $this->get(ChunkKeyCodec::metaKey($resolvedKey));
+        $currentGeneration = 0;
+        if ($metaRaw !== null) {
+            try {
+                $currentGeneration = ChunkKeyCodec::unpackMeta($metaRaw)['generation'];
+            } catch (ChunkedValueCorruptedException) {
+                $currentGeneration = 0;
+            }
+        }
+        $newGeneration = $currentGeneration + 1;
+
+        // Write the new generation's chunks in budget-sized groups, each
+        // group in its own retried transaction.
+        $group = [];
+        $groupBytes = 0;
+
+        for ($index = 0; $index < $chunkCount; ++$index) {
+            $chunkKey = ChunkKeyCodec::chunkKey($resolvedKey, $newGeneration, $index);
+            $chunkValue = substr($value, $index * $chunkSize, $chunkSize);
+
+            $size = strlen($chunkKey) + strlen($chunkValue);
+            if ($group !== [] && $groupBytes + $size > MutationBudget::SPLIT_TARGET_BYTES) {
+                $this->writeChunkGroup($group);
+                $group = [];
+                $groupBytes = 0;
+            }
+
+            $group[] = [$chunkKey, $chunkValue];
+            $groupBytes += $size;
+        }
+
+        if ($group !== []) {
+            $this->writeChunkGroup($group);
+        }
+
+        // Atomic swap: point the metadata at the new generation and clear
+        // everything below its first chunk (the previous generation and any
+        // orphaned chunks from interrupted attempts).
+        $this->transact(
+            static function (Transaction $tr) use ($resolvedKey, $newGeneration, $totalLength, $chunkCount): void {
+                // Clear first (the range includes the metadata key), then set
+                // the new metadata record — mutations apply in order, so the
+                // record written last survives.
+                $tr->clearRange(
+                    ChunkKeyCodec::namespaceBegin($resolvedKey),
+                    ChunkKeyCodec::clearBelowGenerationEnd($resolvedKey, $newGeneration),
+                );
+                $tr->set(
+                    ChunkKeyCodec::metaKey($resolvedKey),
+                    ChunkKeyCodec::packMeta($totalLength, $chunkCount, $newGeneration),
+                );
+            },
+        );
+    }
+
+    /**
+     * Commit one group of chunk writes (already resolved binary keys) in its
+     * own retried transaction.
+     *
+     * @param list<array{0: string, 1: string}> $entries
+     */
+    private function writeChunkGroup(array $entries): void
+    {
+        $this->transact(static function (Transaction $tr) use ($entries): void {
+            foreach ($entries as [$chunkKey, $chunkValue]) {
+                $tr->set($chunkKey, $chunkValue);
+            }
+        });
+    }
+
+    /**
+     * Remove a chunked value in a single retried transaction (one range
+     * clear removes the metadata record, all chunks and all generations).
+     */
+    public function deleteValueChunked(string|KeyConvertible $key): void
+    {
+        $this->transact(static function (Transaction $tr) use ($key): void {
+            $tr->deleteValueChunked($key);
         });
     }
 
