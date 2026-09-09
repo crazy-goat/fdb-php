@@ -110,6 +110,35 @@ final class FoundationDB
     }
 
     /**
+     * Get the version/build string of the loaded `libfdb_c` client library
+     * (backed by `fdb_get_client_version`). This is what you want to include
+     * in bug reports and to disambiguate multi-version-client setups.
+     */
+    public static function getClientVersion(): string
+    {
+        // PHP FFI converts `const char*` return values to strings natively.
+        $version = NativeClient::getInstance()->fdb->fdb_get_client_version();
+        \assert(\is_string($version));
+
+        return $version;
+    }
+
+    /**
+     * Register a callable to be invoked once when the FDB network thread
+     * stops (i.e. when the network is stopped at process shutdown or via
+     * an explicit `NativeClient::stopNetwork()` call). Useful for flushing
+     * traces/metrics at shutdown.
+     *
+     * NOTE: the callable runs on the PHP main thread, strictly after the
+     * FDB network thread has been joined — PHP must never execute on the
+     * network thread itself. See `NativeClient::onNetworkThreadCompletion()`.
+     */
+    public static function onNetworkThreadCompletion(callable $hook): void
+    {
+        NativeClient::getInstance()->onNetworkThreadCompletion($hook);
+    }
+
+    /**
      * Configure the default per-transaction retry-attempt ceiling used
      * by `Database::transact()`, `Database::readTransact()`,
      * `Database::watch()`, `Database::getAndWatch()`,

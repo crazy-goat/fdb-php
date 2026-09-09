@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- [#94] Client/cluster introspection: `FoundationDB::getClientVersion()`
+  (backed by `fdb_get_client_version`, the version/build of the loaded
+  `libfdb_c`), `Database::getServerProtocol()` (backed by
+  `fdb_database_get_server_protocol` through the new
+  `CrazyGoat\FoundationDB\Future\FutureUInt64` future type and the newly
+  bound `fdb_future_get_uint64` accessor), and
+  `FoundationDB::onNetworkThreadCompletion(callable)` for flushing
+  traces/metrics at shutdown. For safety the completion hook is invoked on
+  the PHP main thread from `NativeClient::stopNetwork()` after the network
+  thread has been joined — PHP is never executed on the FDB network thread.
+  Unit tests in `tests/Unit/FutureUInt64Test.php` and
+  `tests/Unit/NativeClientCompletionHookTest.php`; integration tests in
+  `tests/Integration/DatabaseMonitoringTest.php` and
+  `tests/Integration/NetworkLifecycleTest.php`; `docs/advanced.md` updated.
 - [#91] `ReadTransaction::getMappedRange()` — single-round-trip index lookups
   backed by `fdb_transaction_get_mapped_range` and
   `fdb_future_get_mappedkeyvalue_array` (the latter through the new

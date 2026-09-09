@@ -55,6 +55,22 @@ $status = json_decode($statusJson, true);
 
 // Or get the parsed array directly (consistent with AdminClient::getClusterStatus())
 $status = $db->getClientStatus(asArray: true);
+
+// Client library version of the loaded libfdb_c (useful in bug reports
+// and in multi-version-client setups)
+echo FoundationDB::getClientVersion();
+
+// Protocol version spoken by the cluster — lets you detect whether the
+// loaded client library can talk to it
+echo $db->getServerProtocol();
+
+// Run a callable once when the FDB network thread stops at process shutdown
+// (useful for flushing traces/metrics). The callable runs on the PHP main
+// thread, after the network thread has been joined — never on the network
+// thread itself.
+FoundationDB::onNetworkThreadCompletion(function (): void {
+    // flush metrics/traces here
+});
 ```
 
 ## Connection Strings
