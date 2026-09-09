@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Security
+- [#49] The FoundationDB client library can now be loaded from a pinned
+  absolute path via the `FDB_LIBRARY_PATH` environment variable, instead of
+  the bare soname (`libfdb_c.so`) resolved through the dynamic linker search
+  path — which was subject to library search-path hijacking. Configured
+  paths must be absolute; relative paths are rejected with an
+  `InvalidArgumentException`. See the README ("Pinning the client library
+  path") for details.
+
 ### Fixed
 - [#55] Minor lifecycle and hygiene issues: the `libfdb_c.so` handle
   returned by `dlopen()` is now closed via `dlclose()` in

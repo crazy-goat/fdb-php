@@ -11,6 +11,12 @@ Before you begin, ensure you have the following:
 - **FoundationDB server** (for running operations)
 - **libfdb_c.so** (FoundationDB C client library)
 
+> **Security note:** by default the library is loaded by bare soname, which is
+> resolved through the dynamic linker search path. In production, pin the
+> absolute path of the library with the `FDB_LIBRARY_PATH` environment
+> variable (e.g. `FDB_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/libfdb_c.so`)
+> to prevent library search-path hijacking. See the README for details.
+
 ## Installing FoundationDB
 
 ### Ubuntu/Debian
