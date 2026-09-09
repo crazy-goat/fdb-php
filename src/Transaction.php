@@ -51,6 +51,76 @@ final class Transaction extends ReadTransaction implements Transactor
         );
     }
 
+    /**
+     * Queue multiple key/value writes into this transaction as a single batch.
+     *
+     * Each entry is a `[key, value]` pair (list form, so `KeyConvertible`
+     * keys are supported); keys and values are validated individually exactly
+     * like `set()`. The total byte size of the batch (resolved keys + values)
+     * is computed up front and checked against FoundationDB's per-transaction
+     * mutation budget — an oversized batch throws
+     * `BatchTooLargeException` *before* any mutation is queued, instead of
+     * surfacing as an opaque server-side error during commit().
+     *
+     * The writes are blind (no reads), so two concurrent `setBatch()` calls do
+     * not conflict with each other — the last commit wins. Conflict detection
+     * for read-modify-write patterns comes from the reads performed in the
+     * same transaction.
+     *
+     * If a key appears multiple times, the last entry wins; ordering within
+     * the batch is not guaranteed.
+     *
+     * @param iterable<array{0: string|KeyConvertible, 1: string}> $pairs
+     *
+     * @throws \InvalidArgumentException when a key or value violates the
+     *                                    FDB size limits
+     * @throws BatchTooLargeException    when the batch exceeds the
+     *                                    per-transaction mutation budget
+     */
+    public function setBatch(iterable $pairs): void
+    {
+        $prepared = [];
+        $totalBytes = 0;
+
+        foreach ($pairs as $pair) {
+            // Runtime guard: the docblock types $pairs as a [key, value]
+            // shape, but callers pass plain iterables — malformed entries
+            // must fail with a clear message instead of a TypeError deep
+            // inside the FFI layer. PHPStan trusts the docblock, so the
+            // always-true checks are silenced deliberately.
+            if (!is_array($pair)) { // @phpstan-ignore function.alreadyNarrowedType
+                throw new \InvalidArgumentException(
+                    'Each setBatch() entry must be a [key, value] pair',
+                );
+            }
+
+            if (count($pair) !== 2) { // @phpstan-ignore notIdentical.alwaysFalse
+                throw new \InvalidArgumentException(
+                    'Each setBatch() entry must be a [key, value] pair',
+                );
+            }
+
+            $resolvedKey = $this->resolveKey($pair[0]);
+            $keyLength = KeyValueLimits::assertValidKey($resolvedKey);
+            $valueLength = KeyValueLimits::assertValidValue($pair[1]);
+
+            $totalBytes += $keyLength + $valueLength;
+            $prepared[] = [$resolvedKey, $keyLength, $pair[1], $valueLength];
+        }
+
+        MutationBudget::assertWithinTransactionLimit($totalBytes);
+
+        foreach ($prepared as [$resolvedKey, $keyLength, $value, $valueLength]) {
+            $this->client->fdb->fdb_transaction_set(
+                $this->tpointer,
+                $resolvedKey,
+                $keyLength,
+                $value,
+                $valueLength,
+            );
+        }
+    }
+
     public function clear(string|KeyConvertible $key): void
     {
         $resolvedKey = $this->resolveKey($key);
