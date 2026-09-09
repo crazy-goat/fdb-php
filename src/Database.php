@@ -129,6 +129,95 @@ final class Database implements Transactor, ReadTransactor
         });
     }
 
+    /**
+     * Write multiple key/value pairs in batched transactions.
+     *
+     * Each entry is a `[key, value]` pair (list form, so `KeyConvertible`
+     * keys are supported) — the same shape as `Transaction::setBatch()`.
+     *
+     * - `split: false` (default): the whole batch is committed inside a
+     *   single retried transaction (`transact()`). The batch size is checked
+     *   against FoundationDB's per-transaction mutation budget *before* any
+     *   mutation is queued; an oversized batch throws
+     *   `BatchTooLargeException` and nothing is written.
+     * - `split: true`: the batch is grouped into chunks of at most
+     *   `MutationBudget::SPLIT_TARGET_BYTES` and each group is committed in
+     *   its own retried transaction. This removes the size ceiling, at a
+     *   documented cost: each *individual key write* stays atomic, but there
+     *   is no cross-key snapshot consistency and no all-or-nothing commit —
+     *   a failure mid-batch leaves part of the keys updated, and readers
+     *   may see a mixture of old and new keys while the batch is in
+     *   flight. Suitable for bulk loads and independent key refreshes;
+     *   not suitable for keys that must stay mutually consistent (e.g.
+     *   data + index pairs).
+     *
+     * Retry behaviour: every group goes through `transact()`, so retryable
+     * FDB errors are retried with the standard `onError()` backoff bounded
+     * by the process-wide retry-limit / timeout settings.
+     *
+     * @param iterable<array{0: string|KeyConvertible, 1: string}> $pairs
+     *
+     * @throws \InvalidArgumentException when a key or value violates the
+     *                                    FDB size limits
+     * @throws BatchTooLargeException    when `split` is false and the batch
+     *                                    exceeds the per-transaction
+     *                                    mutation budget
+     */
+    public function setBatch(iterable $pairs, bool $split = false): void
+    {
+        if (!$split) {
+            $this->transact(static function (Transaction $tr) use ($pairs): void {
+                $tr->setBatch($pairs);
+            });
+
+            return;
+        }
+
+        $group = [];
+        $groupBytes = 0;
+
+        foreach ($pairs as $pair) {
+            // Runtime guard, deliberately silenced against the docblock shape
+            // (see Transaction::setBatch() for the rationale).
+            if (!is_array($pair)) { // @phpstan-ignore function.alreadyNarrowedType
+                throw new \InvalidArgumentException(
+                    'Each setBatch() entry must be a [key, value] pair',
+                );
+            }
+
+            if (count($pair) !== 2) { // @phpstan-ignore notIdentical.alwaysFalse
+                throw new \InvalidArgumentException(
+                    'Each setBatch() entry must be a [key, value] pair',
+                );
+            }
+
+            $size = MutationBudget::entrySize($pair);
+
+            if ($group !== [] && $groupBytes + $size > MutationBudget::SPLIT_TARGET_BYTES) {
+                $this->setBatchGroup($group);
+                $group = [];
+                $groupBytes = 0;
+            }
+
+            $group[] = $pair;
+            $groupBytes += $size;
+        }
+
+        if ($group !== []) {
+            $this->setBatchGroup($group);
+        }
+    }
+
+    /**
+     * @param list<array{0: string|KeyConvertible, 1: string}> $group
+     */
+    private function setBatchGroup(array $group): void
+    {
+        $this->transact(static function (Transaction $tr) use ($group): void {
+            $tr->setBatch($group);
+        });
+    }
+
     public function clear(string|KeyConvertible $key): void
     {
         $this->transact(function (Transaction $tr) use ($key): void {

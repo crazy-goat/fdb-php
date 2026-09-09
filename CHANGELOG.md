@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- [#116] Batch write helpers with up-front mutation-budget accounting:
+  `Transaction::setBatch(iterable $pairs)` (queues `[key, value]` pairs —
+  `string` or `KeyConvertible` keys — into the current transaction; the
+  total key+value size is validated against FoundationDB's 10,000,000 B
+  per-transaction mutation budget *before* any mutation is queued, throwing
+  the new `CrazyGoat\FoundationDB\BatchTooLargeException` (public readonly
+  `batchSize` / `maxBatchSize`) at the call site instead of an opaque
+  server-side error during commit) and `Database::setBatch(iterable $pairs,
+  bool $split = false)` (single-transaction mode with retries via
+  `transact()`, or `split: true` mode that groups entries under the new
+  `MutationBudget::SPLIT_TARGET_BYTES` (8,000,000 B) and commits each group
+  in its own retried transaction — per-key atomicity, no cross-key snapshot
+  consistency, documented). The shared `MutationBudget` accounting class is
+  `@internal`; generator-backed `iterable` input is consumed lazily.
+  Integration tests in `tests/Integration/SetBatchTest.php`; documented in
+  `docs/batch-writes.md`.
+
 ## [1.0.0] - 2026-09-09
 
 ### Added
