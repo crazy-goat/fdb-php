@@ -16,6 +16,11 @@ return RectorConfig::configure()
         __DIR__ . '/src',
         __DIR__ . '/tests',
     ])
+    // The binding tester driver (tests/bindingtester) is exercised by the
+    // upstream bindingtester harness itself, not by static analysis.
+    ->withSkip([
+        __DIR__ . '/tests/bindingtester',
+    ])
     ->withPhpVersion(\Rector\ValueObject\PhpVersion::PHP_82)
     ->withSets([
         LevelSetList::UP_TO_PHP_82,

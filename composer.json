@@ -42,6 +42,7 @@
         "test": "phpunit",
         "test:unit": "phpunit --testsuite=Unit",
         "test:integration": "phpunit --testsuite=Integration",
+        "test:bindingtester": "bash tests/bindingtester/run.sh",
         "rector": "rector process --dry-run",
         "rector:fix": "rector process"
     },

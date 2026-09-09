@@ -3,6 +3,9 @@ parameters:
     paths:
         - src
         - tests
+    excludePaths:
+        - tests/bindingtester
+
     ignoreErrors:
         - identifier: method.notFound
           path: src/NativeClient.php

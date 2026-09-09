@@ -97,6 +97,22 @@ docker compose exec php vendor/bin/phpunit --testsuite=Integration
 docker compose down -v
 ```
 
+### Binding tester (cross-binding conformance)
+
+The upstream FoundationDB binding tester runs randomized instruction streams
+against the binding and validates the results (see issue #96).
+
+```bash
+docker compose up -d
+make bindingtester                    # tuple + api + directory suites
+make bindingtester SUITES="tuple"     # single suite
+docker compose down -v
+```
+
+Details and tunables: `docs/bindingtester.md`. The driver lives in
+`tests/bindingtester/`; the upstream Python harness is vendored under
+`tests/bindingtester/upstream/`.
+
 ### Code Quality Tools
 
 | Tool | Command | Purpose |

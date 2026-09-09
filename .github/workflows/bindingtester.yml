@@ -1,0 +1,42 @@
+name: Binding tester
+
+on:
+  schedule:
+    # Nightly at 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  bindingtester:
+    name: Upstream binding tester (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ["tuple", "api", "directory"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start 5-node FDB cluster
+        run: |
+          docker compose up -d --build fdb-coord-1 fdb-coord-2 fdb-coord-3 fdb-server-1 fdb-server-2 fdb-config php
+
+          echo "Waiting for FDB cluster..."
+          for i in $(seq 1 60); do
+            if docker compose exec -T fdb-config fdbcli --exec "status minimal" 2>/dev/null | grep -q "available"; then
+              echo "FDB cluster is ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+
+          docker compose exec -T fdb-config fdbcli --exec "configure tenant_mode=optional_experimental" || true
+
+      - name: Run binding tester suite (${{ matrix.suite }})
+        run: |
+          docker compose exec -T php bash tests/bindingtester/run.sh "${{ matrix.suite }}"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
