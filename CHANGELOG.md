@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.0] - 2026-09-09
 
 ### Added
 - [#93] Blob granule range-management API. Database level (`Database`):
