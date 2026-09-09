@@ -367,6 +367,7 @@ final class NativeClientPartialInitTest extends TestCase
         $this->initializeReadOnly($client, 'fdb', FFI::cdef(self::FDB_STUB_HEADER, $libraryPath));
         $this->initializeReadOnly($client, 'pthread', FFI::cdef(self::PTHREAD_STUB_HEADER, $libraryPath));
         $this->initializeReadOnly($client, 'libdl', FFI::cdef(self::LIBDL_STUB_HEADER, $libraryPath));
+        $this->initializeReadOnly($client, 'fdbLibraryPath', $libraryPath);
 
         return $client;
     }

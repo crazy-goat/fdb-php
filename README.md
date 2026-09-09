@@ -45,6 +45,22 @@ wget https://github.com/apple/foundationdb/releases/download/7.3.75/foundationdb
 sudo dpkg -i foundationdb-clients_7.3.75-1_amd64.deb
 ```
 
+### Pinning the client library path (recommended in production)
+
+By default the library is loaded by its bare soname (`libfdb_c.so`), which is
+resolved through the dynamic linker search path (`LD_LIBRARY_PATH`,
+`RUNPATH`, …). A malicious library earlier on that path would execute
+arbitrary code inside the PHP process. To eliminate this attack surface, pin
+the absolute path of the library:
+
+```bash
+export FDB_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/libfdb_c.so
+```
+
+The path must be absolute; relative paths are rejected with an
+`InvalidArgumentException`. When the variable is not set, the bare soname is
+used as before.
+
 ## Quick Start
 
 ```php

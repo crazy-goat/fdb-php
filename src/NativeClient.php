@@ -247,7 +247,26 @@ final class NativeClient
 
     private static ?self $instance = null;
 
+    /**
+     * Environment variable that can pin the absolute path of the FoundationDB
+     * client library loaded through FFI. When set, it takes precedence over
+     * the bare soname ("libfdb_c.so"), which is resolved through the dynamic
+     * linker search path and is therefore subject to library hijacking
+     * (see issue #49).
+     */
+    public const LIBRARY_PATH_ENV = 'FDB_LIBRARY_PATH';
+
+    /** Bare soname used when no explicit path is configured. */
+    private const DEFAULT_LIBRARY = 'libfdb_c.so';
+
     public readonly FFI $fdb;
+
+    /**
+     * Resolved library path/soname used for both FFI::cdef() and dlopen().
+     * Either an absolute path (pinned, recommended in production) or the
+     * bare soname.
+     */
+    private readonly string $fdbLibraryPath;
 
     private readonly FFI $pthread;
 
@@ -267,7 +286,7 @@ final class NativeClient
 
     private ?CData $networkThread = null;
 
-    /** @var \FFI\CData|null Handle returned by dlopen('libfdb_c.so'), closed in stopNetwork(). */
+    /** @var \FFI\CData|null Handle returned by dlopen() of the FDB library, closed in stopNetwork(). */
     private ?CData $fdbLibraryHandle = null;
 
     /**
@@ -285,11 +304,47 @@ final class NativeClient
      */
     private array $networkCompletionHooks = [];
 
-    private function __construct()
+    private function __construct(?string $fdbLibraryPath = null)
     {
-        $this->fdb = FFI::cdef(self::FDB_HEADER, 'libfdb_c.so');
+        $this->fdbLibraryPath = self::resolveLibraryPath($fdbLibraryPath);
+        $this->fdb = FFI::cdef(self::FDB_HEADER, $this->fdbLibraryPath);
         $this->pthread = FFI::cdef(self::PTHREAD_HEADER, 'libpthread.so.0');
         $this->libdl = FFI::cdef(self::LIBDL_HEADER, 'libdl.so.2');
+    }
+
+    /**
+     * Resolves the library to load for FFI::cdef()/dlopen().
+     *
+     * Precedence: explicit argument > FDB_LIBRARY_PATH environment variable
+     * > the bare soname ("libfdb_c.so"). An explicitly configured value must
+     * be an absolute path: loading by relative path would still traverse
+     * attacker-influenced directories, defeating the purpose of pinning.
+     *
+     * @throws \InvalidArgumentException when a configured path is not absolute
+     */
+    public static function resolveLibraryPath(?string $configured = null): string
+    {
+        $path = $configured ?? getenv(self::LIBRARY_PATH_ENV);
+
+        if ($path === false || $path === '') {
+            return self::DEFAULT_LIBRARY;
+        }
+
+        if (!str_starts_with($path, '/')) {
+            throw new \InvalidArgumentException(sprintf(
+                'Configured %s must be an absolute path to libfdb_c, got: "%s"',
+                self::LIBRARY_PATH_ENV,
+                $path,
+            ));
+        }
+
+        return $path;
+    }
+
+    /** The resolved library path/soname this client was loaded from. */
+    public function getLibraryPath(): string
+    {
+        return $this->fdbLibraryPath;
     }
 
     public static function getInstance(): self
@@ -332,9 +387,11 @@ final class NativeClient
 
             $this->networkThread = $this->pthread->new('pthread_t');
 
-            $fdbHandle = $this->libdl->dlopen('libfdb_c.so', self::RTLD_LAZY);
+            $fdbHandle = $this->libdl->dlopen($this->fdbLibraryPath, self::RTLD_LAZY);
             if ($fdbHandle === null || FFI::isNull($fdbHandle)) {
-                throw new \RuntimeException('Failed to dlopen libfdb_c.so: ' . $this->lastDlError());
+                throw new \RuntimeException(
+                    sprintf('Failed to dlopen %s: ', $this->fdbLibraryPath) . $this->lastDlError(),
+                );
             }
             $this->fdbLibraryHandle = $fdbHandle;
 
