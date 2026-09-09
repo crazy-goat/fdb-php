@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Chunk\ChunkKeyCodec;
 use CrazyGoat\FoundationDB\Enum\ConflictRangeType;
 use CrazyGoat\FoundationDB\Enum\MutationType;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
@@ -35,6 +36,9 @@ final class Transaction extends ReadTransaction implements Transactor
     ) {
         parent::__construct($tpointer, $db, $client, false);
     }
+
+    /** Default chunk size for chunked values: the FDB per-value limit. */
+    public const DEFAULT_CHUNK_SIZE = KeyValueLimits::MAX_VALUE_SIZE;
 
     public function set(string|KeyConvertible $key, string $value): void
     {
@@ -119,6 +123,104 @@ final class Transaction extends ReadTransaction implements Transactor
                 $valueLength,
             );
         }
+    }
+
+    /**
+     * Validate a chunk size for chunked-value writes: chunks are written
+     * through `set()`, so the size must land within the FDB per-value limit.
+     *
+     * @throws \InvalidArgumentException when `$chunkSize` is out of range
+     */
+    public static function assertChunkSize(int $chunkSize): void
+    {
+        if ($chunkSize < 1 || $chunkSize > KeyValueLimits::MAX_VALUE_SIZE) {
+            throw new \InvalidArgumentException(sprintf(
+                'Chunk size must be between 1 and %d bytes (got %d)',
+                KeyValueLimits::MAX_VALUE_SIZE,
+                $chunkSize,
+            ));
+        }
+    }
+
+    /**
+     * Write a value larger than the FDB per-value limit by splitting it into
+     * ordered chunks under a `\x00`-namespaced key space derived from `$key`
+     * (see `Chunk\ChunkKeyCodec` for the layout).
+     *
+     * Everything — the namespace clear, all chunk writes and the metadata
+     * record — happens inside the current transaction, so the write is fully
+     * atomic: readers see either the whole old or the whole new value. The
+     * atomic mode therefore caps the assembled value at
+     * `MutationBudget::SPLIT_TARGET_BYTES` (8,000,000 B); larger values
+     * throw `ChunkedValueTooLargeException` *before* any mutation is queued
+     * and can be written with `Database::setValueChunked(..., atomic: false)`,
+     * which splits the write across multiple transactions.
+     *
+     * Stale chunks from a previous, larger value are removed by the namespace
+     * clear, so a read never sees a stale tail.
+     *
+     * Mixing plain `set()` and chunked values on the same base key is
+     * unsupported: chunk sub-keys live in a dedicated namespace, so the two
+     * representations can silently diverge.
+     *
+     * @throws \InvalidArgumentException        when `$chunkSize` is out of
+     *                                          range or the key/value violate
+     *                                          the FDB size limits
+     * @throws ChunkedValueTooLargeException    when the value exceeds the
+     *                                          atomic-mode cap
+     */
+    public function setValueChunked(
+        string|KeyConvertible $key,
+        string $value,
+        int $chunkSize = self::DEFAULT_CHUNK_SIZE,
+    ): void {
+        $resolvedKey = $this->resolveKey($key);
+        self::assertChunkSize($chunkSize);
+
+        $totalLength = strlen($value);
+        if ($totalLength > MutationBudget::SPLIT_TARGET_BYTES) {
+            throw new ChunkedValueTooLargeException($totalLength, MutationBudget::SPLIT_TARGET_BYTES);
+        }
+
+        // Remove the whole namespace first: stale chunks from a previous,
+        // larger value must never be visible to a reader.
+        $this->clearRange(
+            ChunkKeyCodec::namespaceBegin($resolvedKey),
+            ChunkKeyCodec::namespaceEnd($resolvedKey),
+        );
+
+        $chunkCount = $totalLength === 0 ? 0 : intdiv($totalLength - 1, $chunkSize) + 1;
+
+        for ($index = 0; $index < $chunkCount; ++$index) {
+            $this->set(
+                ChunkKeyCodec::chunkKey($resolvedKey, 0, $index),
+                substr($value, $index * $chunkSize, $chunkSize),
+            );
+        }
+
+        // Written last so the namespace clear + chunks + meta are one logical
+        // unit; within the transaction order does not matter for readers
+        // (nothing commits until commit()).
+        $this->set(
+            ChunkKeyCodec::metaKey($resolvedKey),
+            ChunkKeyCodec::packMeta($totalLength, $chunkCount, 0),
+        );
+    }
+
+    /**
+     * Remove a chunked value written by `setValueChunked()`: one range clear
+     * removes the metadata record, all chunks and all generations at once.
+     *
+     * Deleting a key that holds no chunked value is a no-op.
+     */
+    public function deleteValueChunked(string|KeyConvertible $key): void
+    {
+        $resolvedKey = $this->resolveKey($key);
+
+        $this->clearRange(
+            ChunkKeyCodec::namespaceBegin($resolvedKey),
+            ChunkKeyCodec::namespaceEnd($resolvedKey),
+        );
     }
 
     public function clear(string|KeyConvertible $key): void

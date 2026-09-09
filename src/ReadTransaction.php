@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB;
 
+use CrazyGoat\FoundationDB\Chunk\ChunkKeyCodec;
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureDouble;
 use CrazyGoat\FoundationDB\Future\FutureGranuleSummaryArray;
@@ -41,6 +42,72 @@ class ReadTransaction
             ),
             $this->client,
         );
+    }
+
+    /**
+     * Read back a chunked value written by `Transaction::setValueChunked()`.
+     *
+     * One range read reassembles all chunks of the active generation:
+     *
+     * - key holds no chunked value (no metadata record) → `null`
+     * - key holds an empty chunked value → `""` (not `null`)
+     * - metadata present but malformed / chunk data missing or of the wrong
+     *   total length → `ChunkedValueCorruptedException` (loud failure instead
+     *   of silently returning garbage)
+     *
+     * Available on snapshots too (inherited by `Snapshot`); note that snapshot
+     * reads create no read-conflict ranges.
+     *
+     * @throws \InvalidArgumentException               when the key violates
+     *                                                 the FDB size limits
+     * @throws ChunkedValueCorruptedException          when the stored data
+     *                                                 cannot be interpreted
+     */
+    public function getValueChunked(string|KeyConvertible $key): ?string
+    {
+        $resolvedKey = $this->resolveKey($key);
+        KeyValueLimits::assertValidKey($resolvedKey);
+
+        $metaRaw = $this->get(ChunkKeyCodec::metaKey($resolvedKey))->await();
+        if ($metaRaw === null) {
+            return null;
+        }
+
+        $meta = ChunkKeyCodec::unpackMeta($metaRaw);
+
+        if ($meta['count'] === 0) {
+            return '';
+        }
+
+        $rows = $this->getRangeAll(
+            ChunkKeyCodec::generationBegin($resolvedKey, $meta['generation']),
+            ChunkKeyCodec::generationEnd($resolvedKey, $meta['generation']),
+        );
+
+        if (count($rows) !== $meta['count']) {
+            throw new ChunkedValueCorruptedException(sprintf(
+                'Chunked value under "%s" declares %d chunks but %d were found in the range',
+                $resolvedKey,
+                $meta['count'],
+                count($rows),
+            ));
+        }
+
+        $assembled = '';
+        foreach ($rows as $row) {
+            $assembled .= $row->value;
+        }
+
+        if (strlen($assembled) !== $meta['length']) {
+            throw new ChunkedValueCorruptedException(sprintf(
+                'Chunked value under "%s" assembles to %d bytes but the metadata declares %d',
+                $resolvedKey,
+                strlen($assembled),
+                $meta['length'],
+            ));
+        }
+
+        return $assembled;
     }
 
     public function getKey(KeySelector $selector): FutureKey
