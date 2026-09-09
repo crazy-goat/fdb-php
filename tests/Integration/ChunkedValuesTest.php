@@ -7,6 +7,7 @@ namespace CrazyGoat\FoundationDB\Tests\Integration;
 use CrazyGoat\FoundationDB\Chunk\ChunkKeyCodec;
 use CrazyGoat\FoundationDB\ChunkedValueCorruptedException;
 use CrazyGoat\FoundationDB\ChunkedValueTooLargeException;
+use CrazyGoat\FoundationDB\KeyValueLimits;
 use CrazyGoat\FoundationDB\MutationBudget;
 use CrazyGoat\FoundationDB\Subspace;
 use PHPUnit\Framework\Attributes\Test;
@@ -202,6 +203,38 @@ final class ChunkedValuesTest extends TestCase
 
         $this->expectException(\InvalidArgumentException::class);
         $db->setValueChunked('chunk/bad-size', 'v', 0);
+    }
+
+    #[Test]
+    public function chunkKeysNearTheKeySizeLimitAreRejected(): void
+    {
+        $db = $this->getDatabase();
+
+        // A base key 2 bytes below the limit: the metadata key (base + "\x00\x00",
+        // exactly 10,000 bytes) still fits, but every chunk key carries the packed
+        // [generation, index] tuple suffix and exceeds the 10,000-byte key limit.
+        $baseKey = str_repeat('k', KeyValueLimits::MAX_KEY_SIZE - 2);
+        $metaKey = ChunkKeyCodec::metaKey($baseKey);
+
+        self::assertSame(KeyValueLimits::MAX_KEY_SIZE, strlen($metaKey));
+        self::assertGreaterThan(
+            KeyValueLimits::MAX_KEY_SIZE,
+            strlen(ChunkKeyCodec::chunkKey($baseKey, 0, 0)),
+        );
+
+        try {
+            $db->setValueChunked($baseKey, 'value');
+            self::fail('Expected the oversized chunk key to be rejected');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('key exceeds maximum size', $e->getMessage());
+        }
+
+        // The transaction was aborted by the exception — nothing was written,
+        // and the database stays usable.
+        self::assertNull($db->transact(fn ($tr) => $tr->getValueChunked($baseKey)));
+
+        $db->set('chunk/key-limit/after', 'ok');
+        self::assertSame('ok', $db->get('chunk/key-limit/after'));
     }
 
     // -- non-atomic (multi-transaction) mode ---------------------------------------
