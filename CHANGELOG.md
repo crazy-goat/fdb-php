@@ -27,6 +27,18 @@
   `Snapshot::$parentTransaction` is documented as a GC anchor.
 
 ### Added
+- [#92] Non-blocking future support: `Future::awaitAll()` resolves N futures
+  with a single grouped wait (all requests in flight at once — total latency
+  of the slowest future instead of the sum of all of them, results and errors
+  resolved in input order); `Future::onReady()` registers a completion hook
+  that always runs on the PHP thread (never on the FDB network thread); and
+  `RangeResult` iteration now prefetches the next page before the consumer
+  finishes the current one, removing one round trip of latency per page of a
+  range scan. The awaitAll/poll model and its limits (no
+  `fdb_future_set_callback` binding yet, no Fiber suspension) are documented
+  in `docs/advanced.md`. Covered by
+  `tests/Unit/FutureAwaitAllTest.php` and
+  `tests/Unit/RangeResultTest.php`.
 - [#96] Upstream FoundationDB binding tester support: a PHP stack machine
   driver (`tests/bindingtester/tester.php`) implementing the upstream
   protocol (API operations, tuple operations, directory layer extension,

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Advanced features: Locality API, Key Utilities, Database Monitoring, Connection Strings, Explicit Lifecycle Management.
+Advanced features: Locality API, Key Utilities, Database Monitoring, Connection Strings, Explicit Lifecycle Management, Grouped Future Waits & Range Read-Ahead.
 
 ## Locality API
 
@@ -177,3 +177,58 @@ $future->isReady();  // check without blocking
 $future->cancel();   // cancel the operation
 $value = $future->await(); // block until ready
 ```
+
+### Grouped waits: `Future::awaitAll()`
+
+Futures can be fanned out and awaited as a group. All N requests are already
+in flight, so the total wait is driven by the slowest future (roughly one
+round trip) instead of N round trips:
+
+```php
+$values = Future::awaitAll([
+    'a' => $tr->get('a'),
+    'b' => $tr->get('b'),
+    'c' => $tr->get('c'),
+]);
+// ['a' => '...', 'b' => '...', 'c' => '...']
+```
+
+- Results keep the input keys; resolution order matches the input order.
+- Errors are still thrown from `await()` — after all futures are ready, in
+  input order, so a failure in an early future never cancels the rest.
+- Implemented by polling the non-blocking `fdb_future_is_ready()` for every
+  future at once (1 ms spin interval). No PHP code ever runs on the FDB
+  network thread.
+
+### Completion hooks: `Future::onReady()`
+
+```php
+$future = $tr->get('key');
+$future->onReady(function ($f) {
+    echo "ready!\n";
+});
+$value = $future->await(); // hook fires just before the value is read
+```
+
+- The hook runs exactly once, on the PHP thread that resolved the future —
+  never on the FDB network thread.
+- Hooks registered after the future has already been resolved fire
+  immediately. Exceptions thrown from a hook propagate to the caller.
+
+### Range read-ahead
+
+`RangeResult` iteration overlaps network round trips with consumption: while
+the consumer is processing page N, the request for page N+1 is already in
+flight. For typical multi-page range scans this removes one round trip of
+latency per page. Nothing to configure — it is the default behavior of
+`foreach ($range as $keyValue)` and `RangeResult::toArray()`.
+
+### Limits of the current async model
+
+- `await()` still blocks the calling (PHP) thread until the future is ready —
+  there is no callback binding (`fdb_future_set_callback`) yet, because PHP
+  code cannot safely run on the FDB network thread. Grouped waits
+  (`awaitAll()`) and range read-ahead recover most of the practical
+  parallelism without it.
+- Fibers are not suspended by `await()`, so the library does not yet compose
+  with Fiber-based event loops (Revolt/AMPHP/ReactPHP).

@@ -7,7 +7,7 @@ namespace CrazyGoat\FoundationDB;
 use Closure;
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureKeyValueArray;
-use CrazyGoat\FoundationDB\Future\FutureKvResult;
+use CrazyGoat\FoundationDB\Future\KvsFuture;
 
 /** @implements \IteratorAggregate<int, KeyValue> */
 final readonly class RangeResult implements \IteratorAggregate
@@ -38,7 +38,7 @@ final readonly class RangeResult implements \IteratorAggregate
                 StreamingMode $mode,
                 int $iteration,
                 bool $reverse,
-            ): FutureKvResult => $this->getRangeRaw($begin, $end, $limit, $mode, $iteration, $reverse)->await(),
+            ): FutureKeyValueArray => $this->getRangeRaw($begin, $end, $limit, $mode, $iteration, $reverse),
         );
     }
 
@@ -46,7 +46,12 @@ final readonly class RangeResult implements \IteratorAggregate
      * Iterates a range across server batches, advancing the (exclusive) endpoint
      * strictly past the last key of the previous batch so that no key is yielded twice.
      *
-     * @param Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): FutureKvResult $fetcher
+     * Read-ahead: while the current batch is being consumed, the request for the
+     * next batch is already in flight (the fetcher returns an un-awaited
+     * future), so page N+1's network round trip overlaps with the consumption
+     * of page N instead of serializing after it.
+     *
+     * @param Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): KvsFuture $fetcher
      * @return \Generator<int, KeyValue>
      */
     public static function paginate(
@@ -66,27 +71,30 @@ final readonly class RangeResult implements \IteratorAggregate
             return;
         }
 
-        while (true) {
-            $currentLimit = $limit !== null ? $limit - $fetched : 0;
+        $future = $fetcher($beginSelector, $endSelector, $limit ?? 0, $mode, $iteration, $reverse);
 
-            $result = $fetcher($beginSelector, $endSelector, $currentLimit, $mode, $iteration, $reverse);
+        while (true) {
+            $result = $future->await();
             $kvs = $result->kvs;
             $count = $result->count;
+            $fetched += $count;
 
-            foreach ($kvs as $kv) {
-                yield $kv;
-                $fetched++;
-            }
+            $exhausted = $count === 0
+                || !$result->more
+                || ($limit !== null && $fetched >= $limit);
 
-            if ($count === 0 || !$result->more) {
+            if ($exhausted) {
+                foreach ($kvs as $kv) {
+                    yield $kv;
+                }
+
                 break;
             }
 
-            if ($limit !== null && $fetched >= $limit) {
-                break;
-            }
-
+            // Prefetch the next batch BEFORE yielding the current one, so its
+            // round trip overlaps with the consumer processing this batch.
             $lastKey = $kvs[$count - 1]->key;
+            $nextLimit = $limit !== null ? $limit - $fetched : 0;
 
             if ($reverse) {
                 $endSelector = KeySelector::firstGreaterOrEqual($lastKey);
@@ -95,6 +103,11 @@ final readonly class RangeResult implements \IteratorAggregate
             }
 
             $iteration++;
+            $future = $fetcher($beginSelector, $endSelector, $nextLimit, $mode, $iteration, $reverse);
+
+            foreach ($kvs as $kv) {
+                yield $kv;
+            }
         }
     }
 
