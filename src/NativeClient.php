@@ -126,6 +126,13 @@ final class NativeClient
         FDBFuture* fdb_database_get_server_protocol(FDBDatabase* d, uint64_t expected_version);
         fdb_error_t fdb_database_set_option(FDBDatabase* d, int option, const void* value, int value_length);
         fdb_error_t fdb_database_create_transaction(FDBDatabase* d, FDBTransaction** out_transaction);
+        FDBFuture* fdb_database_create_snapshot(
+            FDBDatabase* d, const char* uid, int uid_length,
+            const char* snap_command, int snap_command_length
+        );
+        FDBFuture* fdb_database_force_recovery_with_data_loss(
+            FDBDatabase* d, const char* dcid, int dcid_length
+        );
         FDBFuture* fdb_database_reboot_worker(
             FDBDatabase* d, const char* address, int address_length, fdb_bool_t check, int duration
         );

@@ -33,7 +33,9 @@ namespace CrazyGoat\FoundationDB;
  * | excludeServer     | server address (IP:port)                     | `[A-Za-z0-9._:-]`                | 256 bytes  |
  * | includeServer     | server address (IP:port)                     | (same as excludeServer)          | 256 bytes  |
  * | configure         | whitespace-split tokens, ≥1 token            | `[A-Za-z0-9_-]` per token        | 64 bytes   |
- * | forceRecovery     | datacenter identifier                        | `[A-Za-z0-9_-]`                  | 64 bytes   |
+ * | forceRecoveryWithDataLoss | datacenter identifier                | `[A-Za-z0-9_-]`                  | 64 bytes   |
+ * | createSnapshot    | snapshot UID                                 | `[0-9a-fA-F]`, exactly 32 chars  | 32 bytes   |
+ * | createSnapshot    | snapshot command                             | printable ASCII (0x20–0x7E)      | 256 bytes  |
  *
  * The allow-list deliberately excludes every byte below 0x20, 0x7F (DEL),
  * 0x80–0xFF, and `"/"`, so a tenant name or address containing a slash,
@@ -42,13 +44,18 @@ namespace CrazyGoat\FoundationDB;
  *
  * ## Unsupported operations
  *
- * `configure()` and `forceRecovery()` are deprecated and throw
+ * `configure()` is deprecated and throws
  * `\LogicException` synchronously (after input validation): FoundationDB
  * does not expose cluster configuration (redundancy mode, storage engine)
- * or forced recovery through the special-key space — the corresponding
+ * through the special-key space — the corresponding
  * writes fail at commit with `special_keys_no_module_found`. Use the
- * `fdbcli` `configure` and `force_recovery_with_data_loss` commands
+ * `fdbcli` `configure` command
  * instead. See issue #43.
+ *
+ * Forced recovery is implemented via the direct C API entry point
+ * `fdb_database_force_recovery_with_data_loss()` (issue #97), the same
+ * RPC the `fdbcli` `force_recovery_with_data_loss` command and the other
+ * bindings use; the old special-key write path is gone.
  */
 final readonly class AdminClient
 {
@@ -65,7 +72,7 @@ final readonly class AdminClient
     private const MAX_LABEL_LENGTH = 256;
 
     /**
-     * Maximum byte length for a single configure() / forceRecovery() token.
+     * Maximum byte length for a single configure() / forceRecoveryWithDataLoss() token.
      */
     private const MAX_TOKEN_LENGTH = 64;
 
@@ -389,43 +396,104 @@ final readonly class AdminClient
     }
 
     /**
-     * Force database recovery (use with caution!).
+     * Force database recovery into the given datacenter, abandoning data
+     * written since the datacenter's last usable state.
      *
-     * @deprecated NOT SUPPORTED by the FoundationDB special-key space and
-     *             scheduled for removal. Forced recovery is performed by the
-     *             cluster controller over an RPC
-     *             (`IClusterConnectionRecord::forceRecovery`, exposed in
-     *             `fdbcli` as `force_recovery_with_data_loss <dcid>`) — there
-     *             is no `\xff\xff/management/force_recovery` special key, and
-     *             a write to that key fails at commit with
-     *             `special_keys_no_module_found`. Use the `fdbcli`
-     *             `force_recovery_with_data_loss` command instead. This
-     *             method now throws a `\LogicException` synchronously instead
-     *             of failing opaquely at commit time.
-     *
-     * The dcId is still validated first ({@see self::validateToken()}) so a
-     * malformed identifier keeps failing with a precise
-     * `\InvalidArgumentException`.
+     * Implemented via the direct C API entry point
+     * `fdb_database_force_recovery_with_data_loss()` (issue #97) — the same
+     * RPC the cluster controller and `fdbcli`
+     * `force_recovery_with_data_loss <dcid>` use — not via a special-key
+     * write. The dcId is validated against {@see self::TOKEN_REGEX} before
+     * the FFI call.
      *
      * @param string $dcId Datacenter ID to recover into. Must match
      *                     `[A-Za-z0-9_-]{1,64}`.
      *
      * @throws \InvalidArgumentException If `$dcId` is invalid.
-     * @throws \LogicException           Always — see the deprecation note.
+     * @throws FDBException              If the recovery fails.
      *
-     * @warning This operation may cause data loss. Use only in emergency situations.
+     * @warning This operation may cause data loss. Use only in emergency
+     *          situations.
      */
-    public function forceRecovery(string $dcId): never
+    public function forceRecovery(string $dcId): void
     {
-        $this->validateToken($dcId, 'forceRecovery');
+        $this->forceRecoveryWithDataLoss($dcId);
+    }
 
-        throw new \LogicException(
-            'AdminClient::forceRecovery() is not supported: forced recovery is performed by the '
-            . 'cluster controller over an RPC and has no special-key representation — there is no '
-            . '\xff\xff/management/force_recovery key, and a write to it fails at commit with '
-            . 'special_keys_no_module_found. Use the fdbcli `force_recovery_with_data_loss` command '
-            . 'instead. See issue #43.',
+    /**
+     * Force database recovery into the given datacenter, abandoning data
+     * written since the datacenter's last usable state (direct C API).
+     *
+     * Binds `fdb_database_force_recovery_with_data_loss()`. This is the
+     * same entry point the `fdbcli` command
+     * `force_recovery_with_data_loss <dcid>` uses.
+     *
+     * @param string $dcId Datacenter ID to recover into. Must match
+     *                     `[A-Za-z0-9_-]{1,64}`.
+     *
+     * @throws \InvalidArgumentException If `$dcId` is invalid.
+     * @throws FDBException              If the recovery fails.
+     *
+     * @warning Data loss is in the name of this call: everything not
+     *          replicated into `$dcId` is abandoned permanently. Use only
+     *          in emergency situations when the primary datacenter is gone.
+     */
+    public function forceRecoveryWithDataLoss(string $dcId): void
+    {
+        $this->validateToken($dcId, 'forceRecoveryWithDataLoss');
+
+        $future = new Future\FutureVoid(
+            // @phpstan-ignore method.notFound
+            $this->client->fdb->fdb_database_force_recovery_with_data_loss(
+                $this->database->getDatabasePointer(),
+                $dcId,
+                strlen($dcId),
+            ),
+            $this->client,
         );
+
+        $future->await();
+    }
+
+    /**
+     * Start a disaster-recovery snapshot on the cluster (direct C API).
+     *
+     * Binds `fdb_database_create_snapshot()` — the entry point behind the
+     * `fdbcli` `snapshot` command. Requires snapshot support to be
+     * configured on the cluster; otherwise the future resolves to an
+     * error.
+     *
+     * @param string $uid         32-character hexadecimal snapshot UID,
+     *                            as issued by the DR tooling. Must match
+     *                            `[0-9a-fA-F]{32}`.
+     * @param string $snapCommand Snapshot command payload forwarded verbatim
+     *                            to the cluster (e.g. a start/abort
+     *                            instruction). Must be printable ASCII
+     *                            (0x20–0x7E), 1–256 bytes.
+     *
+     * @throws \InvalidArgumentException If `$uid` is not a 32-char hex UID
+     *                                    or `$snapCommand` is not printable
+     *                                    ASCII within the length bound.
+     * @throws FDBException              If the snapshot request fails.
+     */
+    public function createSnapshot(string $uid, string $snapCommand): void
+    {
+        $this->validateSnapshotUid($uid);
+        $this->validateSnapshotCommand($snapCommand);
+
+        $future = new Future\FutureVoid(
+            // @phpstan-ignore method.notFound
+            $this->client->fdb->fdb_database_create_snapshot(
+                $this->database->getDatabasePointer(),
+                $uid,
+                strlen($uid),
+                $snapCommand,
+                strlen($snapCommand),
+            ),
+            $this->client,
+        );
+
+        $future->await();
     }
 
     // ----------------------------------------------------------------------
@@ -526,7 +594,7 @@ final readonly class AdminClient
     /**
      * Validate a single whitespace-delimited token against the allow-list
      * `^[A-Za-z0-9_-]{1,64}\z`. Used by `configure()` for both the
-     * redundancy and storage tokens, and by `forceRecovery()` for the dcId.
+     * redundancy and storage tokens, and by `forceRecoveryWithDataLoss()` for the dcId.
      *
      * @param string $value  Token supplied by the caller.
      * @param string $caller Calling method name, included in the
@@ -563,6 +631,55 @@ final readonly class AdminClient
                 $caller,
                 $this->printableLabel($value),
                 self::MAX_TOKEN_LENGTH,
+            ));
+        }
+    }
+
+    /**
+     * Validate a snapshot UID: exactly 32 hexadecimal characters, matching
+     * the UID format used by the FDB snapshot/DR tooling.
+     *
+     * @throws \InvalidArgumentException If the UID is not 32 hex characters.
+     */
+    private function validateSnapshotUid(string $uid): void
+    {
+        if (preg_match('/\A[0-9a-fA-F]{32}\z/', $uid) !== 1) {
+            throw new \InvalidArgumentException(sprintf(
+                'createSnapshot: snapshot UID %s must be exactly 32 hexadecimal characters ([0-9a-fA-F])',
+                $this->printableLabel($uid),
+            ));
+        }
+    }
+
+    /**
+     * Validate a snapshot command payload: printable ASCII (0x20–0x7E),
+     * 1–{@see self::MAX_LABEL_LENGTH} bytes.
+     *
+     * @throws \InvalidArgumentException If the command is empty, exceeds the
+     *                                    byte-length bound, or contains a
+     *                                    non-printable byte.
+     */
+    private function validateSnapshotCommand(string $command): void
+    {
+        if ($command === '') {
+            throw new \InvalidArgumentException('createSnapshot: snapshot command must not be empty');
+        }
+
+        if (strlen($command) > self::MAX_LABEL_LENGTH) {
+            throw new \InvalidArgumentException(sprintf(
+                'createSnapshot: snapshot command exceeds maximum length %d bytes (got %d bytes): %s',
+                self::MAX_LABEL_LENGTH,
+                strlen($command),
+                $this->printableLabel($command),
+            ));
+        }
+
+        if (preg_match('/\A[\x20-\x7E]+\z/', $command) !== 1) {
+            throw new \InvalidArgumentException(sprintf(
+                'createSnapshot: snapshot command %s contains a non-printable byte; '
+                . 'allowed: printable ASCII 0x20-0x7E (1-%d bytes)',
+                $this->printableLabel($command),
+                self::MAX_LABEL_LENGTH,
             ));
         }
     }

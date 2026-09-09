@@ -167,28 +167,26 @@ final class AdminInputValidationTest extends TestCase
     }
 
     #[Test]
-    public function forceRecoveryIsNotSupportedAndThrowsBeforeReachingFdb(): void
+    public function forceRecoveryWithDataLossGoesThroughTheDirectCApiNotSpecialKeys(): void
     {
-        // Forced recovery is an RPC to the cluster controller (fdbcli
-        // `force_recovery_with_data_loss`); there is no
-        // \xff\xff/management/force_recovery special key, and writing it
-        // fails at commit with special_keys_no_module_found.
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessageMatches('/not supported.*force_recovery_with_data_loss/s');
+        // Since #97, forceRecovery()/forceRecoveryWithDataLoss() no longer
+        // attempt a special-key write: they call the C API entry point
+        // fdb_database_force_recovery_with_data_loss() directly, so an
+        // invalid dcId must be rejected by PHP-side validation before any
+        // FFI call happens. The destructive happy path is covered in
+        // AdminDestructiveOperationsTest, guarded behind an env flag.
+        $this->expectException(\InvalidArgumentException::class);
 
-        $this->admin->forceRecovery('dc1');
+        $this->admin->forceRecoveryWithDataLoss('dc/1');
     }
 
     #[Test]
-    public function forceRecoveryWritesNothingToTheSpecialKeyspace(): void
+    public function forceRecoveryValidationUsesTheNewMethodErrorMessage(): void
     {
-        try {
-            $this->admin->forceRecovery('dc1');
-        } catch (\LogicException) {
-            // expected — see forceRecoveryIsNotSupportedAndThrowsBeforeReachingFdb
-        }
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('forceRecoveryWithDataLoss');
 
-        self::assertNull($this->getDatabase()->get("\xff\xff/management/force_recovery"));
+        $this->admin->forceRecovery('dc/1');
     }
 
     // ---------------------------------------------------------------------
