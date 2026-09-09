@@ -12,6 +12,12 @@
   path") for details.
 
 ### Fixed
+- [#96] The tuple layer now emits the canonical encoding for boundary
+  integers: values with a magnitude at or above `2^64-1` use the
+  `POS_BIGINT`/`NEG_BIGINT` forms instead of the fixed-width 8-byte codes
+  (which remain spec-valid but are not byte-identical to the Python/Java
+  bindings — found by the upstream binding tester). Covered by
+  `tests/Unit/Tuple/TupleBoundaryIntTest.php`.
 - [#55] Minor lifecycle and hygiene issues: the `libfdb_c.so` handle
   returned by `dlopen()` is now closed via `dlclose()` in
   `NativeClient::stopNetwork()`; `Database::clearAll()` clears from the
@@ -21,6 +27,15 @@
   `Snapshot::$parentTransaction` is documented as a GC anchor.
 
 ### Added
+- [#96] Upstream FoundationDB binding tester support: a PHP stack machine
+  driver (`tests/bindingtester/tester.php`) implementing the upstream
+  protocol (API operations, tuple operations, directory layer extension,
+  unit-test hook), the vendored upstream Python harness
+  (`tests/bindingtester/upstream/`), a runner for the `tuple`, `api` and
+  `directory` suites (`tests/bindingtester/run.sh`,
+  `composer test:bindingtester`, `make bindingtester`), Python FDB bindings
+  in the PHP Docker image, a nightly CI workflow
+  (`.github/workflows/bindingtester.yml`) and `docs/bindingtester.md`.
 - [#97] Disaster-recovery C API bindings in `AdminClient`:
   `createSnapshot(string $uid, string $snapCommand)` (backed by
   `fdb_database_create_snapshot`, the `fdbcli snapshot` entry point; the UID

@@ -301,6 +301,14 @@ final class Tuple
         $bytes = self::gmpToBytes($value);
         $byteCount = strlen($bytes);
 
+        // Canonical (Python/Java) encoding: the fixed-width positive-int
+        // codes are only used for values below 2^64-1; 2^64-1 and anything
+        // larger use the POS_BIGINT form. Cross-binding comparisons
+        // (binding tester #96) require byte-identical output.
+        if ($byteCount === 8 && gmp_cmp($value, gmp_init("18446744073709551615")) >= 0) {
+            return chr(self::TYPE_POS_BIGINT) . chr($byteCount) . $bytes;
+        }
+
         if ($byteCount <= 8) {
             $code = chr(self::TYPE_INT_ZERO + $byteCount);
             return $code . $bytes;
@@ -318,6 +326,20 @@ final class Tuple
         $absValue = gmp_abs($value);
         $bytes = self::gmpToBytes($absValue);
         $byteCount = strlen($bytes);
+
+        // Canonical (Python/Java) encoding: the fixed-width negative-int
+        // codes are only used for magnitudes below 2^64-1; -(2^64-1) and
+        // anything smaller use the NEG_BIGINT form. Cross-binding
+        // comparisons (binding tester #96) require byte-identical output.
+        if ($byteCount === 8 && gmp_cmp($absValue, gmp_init("18446744073709551615")) >= 0) {
+            $invertedLength = chr(255 - $byteCount);
+            $adjustedBytes = '';
+            for ($i = 0; $i < $byteCount; $i++) {
+                $adjustedBytes .= chr((ord($bytes[$i]) ^ 0xFF) & 0xFF);
+            }
+
+            return chr(self::TYPE_NEG_BIGINT) . $invertedLength . $adjustedBytes;
+        }
 
         if ($byteCount <= 8) {
             $code = chr(self::TYPE_INT_ZERO - $byteCount);

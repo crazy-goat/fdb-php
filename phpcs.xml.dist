@@ -6,6 +6,9 @@
     <file>tests</file>
 
     <exclude-pattern>vendor/*</exclude-pattern>
+    <!-- The binding tester driver (tests/bindingtester) is exercised by the
+         upstream bindingtester harness itself, not by the coding standard. -->
+    <exclude-pattern>tests/bindingtester/*</exclude-pattern>
     <exclude-pattern>*.cache</exclude-pattern>
 
     <rule ref="PSR12"/>

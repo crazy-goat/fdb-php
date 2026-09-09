@@ -351,6 +351,7 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 | [Options](docs/options.md) | Network, database, and transaction options |
 | [Error Handling](docs/error-handling.md) | FDBException, error predicates, retry logic |
 | [Advanced](docs/advanced.md) | Locality, KeyUtil, monitoring, Futures, lifecycle |
+| [Binding Tester](docs/bindingtester.md) | Cross-binding conformance via the upstream bindingtester |
 
 See also the [`examples/`](examples/) directory for runnable PHP scripts.
 
@@ -416,6 +417,14 @@ docker compose up -d
 docker compose exec php vendor/bin/phpunit --testsuite=Integration
 docker compose down -v
 ```
+
+Cross-binding conformance via the upstream binding tester (nightly CI):
+
+```bash
+make bindingtester            # tuple + api + directory suites
+```
+
+See [docs/bindingtester.md](docs/bindingtester.md) for details.
 
 ## License
 

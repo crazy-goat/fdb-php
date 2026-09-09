@@ -1,4 +1,4 @@
-.PHONY: up down build ssh test test-unit test-integration lint lint-fix stan cs cs-fix rector rector-fix composer-install fdb-status fdb-cli verify help
+.PHONY: up down build ssh test test-unit test-integration bindingtester lint lint-fix stan cs cs-fix rector rector-fix composer-install fdb-status fdb-cli verify help
 
 up: ## Start all containers
 	docker compose up -d --build
@@ -20,6 +20,9 @@ test-unit: ## Run unit tests only
 
 test-integration: ## Run integration tests only
 	docker compose exec php composer test:integration
+
+bindingtester: ## Run upstream binding tester suites (default: tuple api directory; override with SUITES="tuple")
+	docker compose exec php bash tests/bindingtester/run.sh $(SUITES)
 
 lint: ## Run all linters (phpcs + rector dry-run + phpstan)
 	docker compose exec php composer lint
