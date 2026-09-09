@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- [#55] Minor lifecycle and hygiene issues: the `libfdb_c.so` handle
+  returned by `dlopen()` is now closed via `dlclose()` in
+  `NativeClient::stopNetwork()`; `Database::clearAll()` clears from the
+  zero-length key (`""`) instead of `"\x00"` so an empty key is included;
+  `FoundationDB::closeAllDatabases()` is called from `stopNetwork()` so
+  `fdb_database_destroy()` always runs before `fdb_stop_network()`;
+  `Snapshot::$parentTransaction` is documented as a GC anchor.
+
 ### Added
 - [#97] Disaster-recovery C API bindings in `AdminClient`:
   `createSnapshot(string $uid, string $snapCommand)` (backed by
