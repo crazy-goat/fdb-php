@@ -9,6 +9,7 @@ use CrazyGoat\FoundationDB\Future\FutureDouble;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
 use CrazyGoat\FoundationDB\Future\FutureKey;
 use CrazyGoat\FoundationDB\Future\FutureKeyArray;
+use CrazyGoat\FoundationDB\Future\FutureMappedKeyValueArray;
 use CrazyGoat\FoundationDB\Future\FutureStringArray;
 use CrazyGoat\FoundationDB\Future\FutureValue;
 use FFI\CData;
@@ -164,6 +165,80 @@ class ReadTransaction
             $endSelector,
             $options,
             $this->isSnapshot,
+            $this->client,
+        );
+    }
+
+    /**
+     * Single-round-trip index lookups (fdb_transaction_get_mapped_range).
+     *
+     * Performs a range read over an index subspace and, for every index row,
+     * fetches the records described by the mapper — all in one round trip to
+     * the storage servers. Each resolved index row is returned as a
+     * MappedKeyValue pairing the index key/value with its records.
+     *
+     * The mapper is a packed tuple template (see docs/range-reads.md):
+     * elements like "{K[1]}" and "{V[0]}" are substituted with the
+     * corresponding tuple components of the index key/value, literal
+     * elements are copied verbatim, and "{...}" stands for the remaining
+     * tuple elements.
+     *
+     * NOTE: current FoundationDB versions only support mapped ranges on
+     * non-snapshot (read-your-writes) reads — call this on a Transaction.
+     * On a Snapshot read a LogicException is thrown; the native client also
+     * rejects the request with an FDBException.
+     */
+    public function getMappedRange(
+        string|KeySelector $begin,
+        string|KeySelector $end,
+        string $mapper,
+        ?RangeOptions $options = null,
+    ): FutureMappedKeyValueArray {
+        if ($this->isSnapshot) {
+            throw new \LogicException(
+                'getMappedRange() is only supported on non-snapshot (read-your-writes) reads; ' .
+                'call it on a Transaction instead of Transaction::snapshot()',
+            );
+        }
+
+        $options ??= new RangeOptions();
+
+        $beginSelector = $begin instanceof KeySelector
+            ? $begin
+            : KeySelector::firstGreaterOrEqual($begin);
+
+        $endSelector = $end instanceof KeySelector
+            ? $end
+            : KeySelector::firstGreaterOrEqual($end);
+
+        // Validate the resulting range endpoints and the mapper eagerly so an
+        // oversize key fails at the call site instead of when awaiting.
+        $beginKeyLength = KeyValueLimits::assertValidRangeEndpoint($beginSelector->key);
+        $endKeyLength = KeyValueLimits::assertValidRangeEndpoint($endSelector->key);
+        $mapperLength = KeyValueLimits::assertValidFfiLength($mapper, 'Mapper template');
+
+        return new FutureMappedKeyValueArray(
+            $this->client->fdb->fdb_transaction_get_mapped_range(
+                $this->tpointer,
+                $beginSelector->key,
+                $beginKeyLength,
+                $beginSelector->orEqual ? 1 : 0,
+                $beginSelector->offset,
+                $endSelector->key,
+                $endKeyLength,
+                $endSelector->orEqual ? 1 : 0,
+                $endSelector->offset,
+                $mapper,
+                $mapperLength,
+                $options->limit ?? 0,
+                0,
+                $options->mode->value,
+                1,
+                // Mapped ranges are only supported on non-snapshot reads
+                // (see the guard above).
+                0,
+                $options->reverse ? 1 : 0,
+            ),
             $this->client,
         );
     }

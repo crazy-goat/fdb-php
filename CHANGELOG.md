@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- [#91] `ReadTransaction::getMappedRange()` — single-round-trip index lookups
+  backed by `fdb_transaction_get_mapped_range` and
+  `fdb_future_get_mappedkeyvalue_array` (the latter through the new
+  `CrazyGoat\FoundationDB\Future\FutureMappedKeyValueArray` future type).
+  Each resolved index row is returned as a `MappedKeyValue` pairing the index
+  key/value with the list of records described by the mapper tuple template
+  (`{K[N]}`, `{V[N]}`, and the `{...}` range descriptor that must be the last
+  element). Only available on non-snapshot (read-your-writes) reads — calling
+  it on a `Snapshot` throws a `LogicException`. The FFI layer also corrects
+  the `FDBMappedKeyValue` memory layout: the native reply stores either a
+  point lookup or a range lookup per row (selected by a variant index at
+  offset 104), which the public `fdb_c.h` declaration does not model.
+  Integration tests in `tests/Integration/MappedRangeTest.php`;
+  `docs/range-reads.md` updated with the mapper syntax.
 - [#90] `ReadTransaction::getTotalCost()` and
   `ReadTransaction::getTagThrottledDuration()` (backed by
   `fdb_transaction_get_total_cost` and
