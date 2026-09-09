@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- [#92] Non-blocking helpers on `Future`: `Future::awaitAll(array $futures)`
+  resolves a batch of futures that were all issued up front with roughly one
+  round trip's total latency (each future is already in flight while the
+  previous one resolves), and `Future::onReady(callable $fn)` registers a
+  PHP-thread completion hook. The native `fdb_future_set_callback` entry point
+  remains deliberately unbound: its callback fires on the FDB network thread,
+  where executing PHP is unsafe. See `docs/advanced.md` ("Group Awaits and
+  Completion Hooks").
+- [#92] Read-ahead in `RangeResult` pagination: once a chunk resolves and more
+  pages remain, the request for the next chunk is issued BEFORE the current
+  chunk's items are yielded, so the next page is already in flight while the
+  consumer processes the current one (mirroring Java's `AsyncIterable`). The
+  read-ahead never fetches past an explicit `limit`, and iteration order and
+  pagination semantics are unchanged.
+
 ### Security
 - [#49] The FoundationDB client library can now be loaded from a pinned
   absolute path via the `FDB_LIBRARY_PATH` environment variable, instead of

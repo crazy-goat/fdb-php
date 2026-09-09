@@ -177,3 +177,36 @@ $future->isReady();  // check without blocking
 $future->cancel();   // cancel the operation
 $value = $future->await(); // block until ready
 ```
+
+## Group Awaits and Completion Hooks
+
+Every future in this library resolves by blocking (`await()`), but futures
+that were *issued* up front run concurrently inside the FoundationDB client:
+awaiting them one after another still costs roughly one round trip of total
+latency, not N. Use `Future::awaitAll()` to fan out reads and resolve them
+together:
+
+```php
+$futures = [];
+foreach (['user:1', 'user:2', 'user:3'] as $key) {
+    $futures[] = $tr->get($key);   // all requests are in flight now
+}
+
+$values = Future::awaitAll($futures); // ~1 round trip, not 3
+```
+
+`Future::onReady(callable $fn)` registers a completion hook. If the future is
+already ready the hook runs synchronously; otherwise the current thread blocks
+until it is ready and the hook runs with the future as its argument.
+
+```php
+$tr->get('key')->onReady(function (FutureValue $future): void {
+    // runs once the future is ready
+});
+```
+
+Note: the native `fdb_future_set_callback` entry point is deliberately not
+bound. Its callback fires on the FDB network thread, where executing PHP is
+unsafe; PHP-side hooks (`onReady`, `NativeClient::onNetworkThreadCompletion`)
+always run on the PHP thread instead. There is no Fiber/event-loop integration
+yet — `await()` blocks the current thread.

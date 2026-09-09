@@ -7,7 +7,7 @@ namespace CrazyGoat\FoundationDB\Future;
 use CrazyGoat\FoundationDB\KeyValue;
 use FFI;
 
-final class FutureKeyValueArray extends Future
+final class FutureKeyValueArray extends Future implements KvResultFuture
 {
     private ?FutureKvResult $cachedResult = null;
 

@@ -58,6 +58,57 @@ abstract class Future
 
     abstract public function await(): mixed;
 
+    /**
+     * Registers a completion hook that runs as soon as this future is ready.
+     *
+     * This is a PHP-thread-side hook built on fdb_future_is_ready() and
+     * fdb_future_block_until_ready(), NOT the native fdb_future_set_callback()
+     * binding: the native callback fires on the FDB network thread, where
+     * executing PHP code is unsafe. If the future is already ready, the hook
+     * runs immediately; otherwise the current thread blocks until it is.
+     *
+     * @param callable(static): void $fn
+     */
+    public function onReady(callable $fn): void
+    {
+        if (!$this->isReady()) {
+            $this->blockUntilReady();
+        }
+
+        $fn($this);
+    }
+
+    /**
+     * Awaits a batch of futures that were all issued up front.
+     *
+     * Because every future is already in flight, awaiting them one after
+     * another still costs roughly one round trip of total latency — each
+     * subsequent future is typically already ready by the time the previous
+     * one resolves. This is what makes it possible to fan out N reads and
+     * wait for them together without serializing them.
+     *
+     * @param list<Future> $futures
+     * @return list<mixed> the awaited results, in the same order as $futures
+     */
+    public static function awaitAll(array $futures): array
+    {
+        foreach ($futures as $future) {
+        // @phpstan-ignore-next-line (runtime guard; the PHPDoc list<Future> type is not enforced)
+            if (!$future instanceof self) {
+                throw new \InvalidArgumentException(
+                    sprintf('awaitAll() expects Future instances, got %s', get_debug_type($future)),
+                );
+            }
+        }
+
+        $results = [];
+        foreach ($futures as $future) {
+            $results[] = $future->await();
+        }
+
+        return $results;
+    }
+
     protected function blockUntilReady(): void
     {
         $this->client->checkError(

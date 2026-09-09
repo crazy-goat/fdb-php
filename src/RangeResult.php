@@ -7,7 +7,7 @@ namespace CrazyGoat\FoundationDB;
 use Closure;
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureKeyValueArray;
-use CrazyGoat\FoundationDB\Future\FutureKvResult;
+use CrazyGoat\FoundationDB\Future\KvResultFuture;
 
 /** @implements \IteratorAggregate<int, KeyValue> */
 final readonly class RangeResult implements \IteratorAggregate
@@ -38,7 +38,7 @@ final readonly class RangeResult implements \IteratorAggregate
                 StreamingMode $mode,
                 int $iteration,
                 bool $reverse,
-            ): FutureKvResult => $this->getRangeRaw($begin, $end, $limit, $mode, $iteration, $reverse)->await(),
+            ): KvResultFuture => $this->getRangeRaw($begin, $end, $limit, $mode, $iteration, $reverse),
         );
     }
 
@@ -46,7 +46,12 @@ final readonly class RangeResult implements \IteratorAggregate
      * Iterates a range across server batches, advancing the (exclusive) endpoint
      * strictly past the last key of the previous batch so that no key is yielded twice.
      *
-     * @param Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): FutureKvResult $fetcher
+     * Read-ahead: as soon as the current chunk resolves and more pages remain,
+     * the request for the NEXT chunk is issued BEFORE any item of the current
+     * chunk is yielded — so the next page is already in flight while the
+     * consumer processes the current one, mirroring Java's AsyncIterable.
+     *
+     * @param Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): KvResultFuture $fetcher
      * @return \Generator<int, KeyValue>
      */
     public static function paginate(
@@ -60,40 +65,66 @@ final readonly class RangeResult implements \IteratorAggregate
         $mode = $options->mode;
         $iteration = 1;
         $fetched = 0;
+        $begin = $beginSelector;
+        $end = $endSelector;
 
         // A limit of 0 means "no rows" — return immediately.
         if ($limit === 0) {
             return;
         }
 
+        $pending = null;
+        $nextBegin = null;
+        $nextEnd = null;
+
         while (true) {
             $currentLimit = $limit !== null ? $limit - $fetched : 0;
 
-            $result = $fetcher($beginSelector, $endSelector, $currentLimit, $mode, $iteration, $reverse);
+            $pending ??= $fetcher($begin, $end, $currentLimit, $mode, $iteration, $reverse);
+            $result = $pending->await();
+            $pending = null;
+
             $kvs = $result->kvs;
             $count = $result->count;
+
+            // Decide whether another page is needed; if so, issue the request
+            // now (read-ahead) instead of after the current chunk is drained.
+            $more = $count > 0
+                && $result->more
+                && ($limit === null || $fetched + $count < $limit);
+
+            if ($more) {
+                $lastKey = $kvs[$count - 1]->key;
+
+                if ($reverse) {
+                    $nextBegin = $begin;
+                    $nextEnd = KeySelector::firstGreaterOrEqual($lastKey);
+                } else {
+                    $nextBegin = KeySelector::firstGreaterThan($lastKey);
+                    $nextEnd = $end;
+                }
+
+                $pending = $fetcher(
+                    $nextBegin,
+                    $nextEnd,
+                    $limit !== null ? $limit - $fetched - $count : 0,
+                    $mode,
+                    $iteration + 1,
+                    $reverse,
+                );
+            }
 
             foreach ($kvs as $kv) {
                 yield $kv;
                 $fetched++;
             }
 
-            if ($count === 0 || !$result->more) {
+            if (!$more) {
                 break;
             }
 
-            if ($limit !== null && $fetched >= $limit) {
-                break;
-            }
-
-            $lastKey = $kvs[$count - 1]->key;
-
-            if ($reverse) {
-                $endSelector = KeySelector::firstGreaterOrEqual($lastKey);
-            } else {
-                $beginSelector = KeySelector::firstGreaterThan($lastKey);
-            }
-
+            $begin = $nextBegin;
+            $end = $nextEnd;
             $iteration++;
         }
     }

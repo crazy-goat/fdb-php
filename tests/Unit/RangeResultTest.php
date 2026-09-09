@@ -7,6 +7,7 @@ namespace CrazyGoat\FoundationDB\Tests\Unit;
 use Closure;
 use CrazyGoat\FoundationDB\Enum\StreamingMode;
 use CrazyGoat\FoundationDB\Future\FutureKvResult;
+use CrazyGoat\FoundationDB\Future\KvResultFuture;
 use CrazyGoat\FoundationDB\KeySelector;
 use CrazyGoat\FoundationDB\KeyValue;
 use CrazyGoat\FoundationDB\RangeOptions;
@@ -26,7 +27,7 @@ final class RangeResultTest extends TestCase
      *
      * @param list<KeyValue> $data
      * @param int<1, max> $batchSize
-     * @return Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): FutureKvResult
+     * @return Closure(KeySelector, KeySelector, int, StreamingMode, int, bool): KvResultFuture
      */
     private function fakeServer(array $data, int $batchSize): Closure
     {
@@ -48,7 +49,7 @@ final class RangeResultTest extends TestCase
             $batchSize,
             $resolveLower,
             $resolveUpper
-): FutureKvResult {
+        ): KvResultFuture {
             $lo = $resolveLower($begin);
             $hi = $resolveUpper($end);
 
@@ -60,7 +61,7 @@ final class RangeResultTest extends TestCase
             }
 
             if ($lo >= $hi) {
-                return new FutureKvResult([], 0, false);
+                return new FakeKvFuture(new FutureKvResult([], 0, false));
             }
 
             if ($reverse) {
@@ -74,7 +75,7 @@ final class RangeResultTest extends TestCase
             $total = $hi - $lo;
             $more = $total > count($slice);
 
-            return new FutureKvResult($slice, count($slice), $more);
+            return new FakeKvFuture(new FutureKvResult($slice, count($slice), $more));
         };
     }
 
@@ -196,5 +197,94 @@ final class RangeResultTest extends TestCase
         );
 
         self::assertCount(0, iterator_to_array($result));
+    }
+
+    #[Test]
+    public function nextChunkRequestIsIssuedBeforeCurrentChunkIsConsumed(): void
+    {
+        $data = $this->dataset(50);
+        $events = [];
+
+        $fetcher = function (
+            KeySelector $begin,
+            KeySelector $end,
+            int $limit,
+            StreamingMode $mode,
+            int $iteration,
+            bool $reverse,
+        ) use (
+            $data,
+            &$events
+): KvResultFuture {
+            $events[] = sprintf('request:%d', $iteration);
+            $slice = array_slice($data, ($iteration - 1) * 10, 10);
+            $more = count($slice) === 10 && ($iteration - 1) * 10 + 10 < count($data);
+
+            return new FakeKvFuture(new FutureKvResult($slice, count($slice), $more));
+        };
+
+        $result = RangeResult::paginate(
+            KeySelector::firstGreaterOrEqual('k0000'),
+            KeySelector::firstGreaterOrEqual('k0099'),
+            new RangeOptions(),
+            $fetcher,
+        );
+
+        $yielded = [];
+        foreach ($result as $kv) {
+            if ($yielded === []) {
+                // Read-ahead: request #2 must already be in flight before the
+                // first item of chunk #1 is handed to the consumer.
+                self::assertContains('request:2', $events);
+                self::assertNotContains('request:3', $events, 'no further read-ahead until the next page is needed');
+            }
+            $yielded[] = $kv->key;
+        }
+
+        self::assertCount(50, $yielded);
+        self::assertSame(['request:1', 'request:2', 'request:3', 'request:4', 'request:5'], $events);
+    }
+
+    #[Test]
+    public function limitIsHonoredWithReadAheadWithoutOverfetching(): void
+    {
+        $data = $this->dataset(100);
+        $requests = [];
+        $fetcher = function (
+            KeySelector $begin,
+            KeySelector $end,
+            int $limit,
+            StreamingMode $mode,
+            int $iteration,
+            bool $reverse,
+        ) use (
+            $data,
+            &$requests
+): KvResultFuture {
+            $lo = (int) substr($begin->key, 1);
+            $slice = array_slice($data, $lo, $limit);
+            $requests[] = [$lo, $limit];
+            $more = $lo + count($slice) < count($data);
+
+            return new FakeKvFuture(new FutureKvResult($slice, count($slice), $more));
+        };
+
+        $result = RangeResult::paginate(
+            KeySelector::firstGreaterOrEqual('k0000'),
+            KeySelector::firstGreaterOrEqual('k0099'),
+            new RangeOptions(limit: 25),
+            $fetcher,
+        );
+
+        $keys = [];
+        foreach ($result as $kv) {
+            $keys[] = $kv->key;
+        }
+
+        self::assertCount(25, $keys);
+        self::assertSame(['k0000', 'k0024'], [$keys[0], $keys[24]]);
+        // 25 rows fit in a single request; no page may be requested once the
+        // limit is reached — read-ahead must not overfetch past the limit.
+        self::assertSame([[0, 25]], $requests);
     }
 }
