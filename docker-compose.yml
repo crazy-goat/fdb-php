@@ -128,7 +128,9 @@ services:
         done
         
         echo "Configuring FDB cluster..."
-        fdbcli --exec "configure new double ssd" || echo "Already configured"
+        fdbcli --exec "configure new double ssd blob_granules_enabled=1" \
+          || fdbcli --exec "configure blob_granules_enabled=1" \
+          || echo "Already configured"
         fdbcli --exec "status"
         exec tail -f /dev/null
 

@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+- [#93] Blob granule range-management API. Database level (`Database`):
+  `blobbifyRange()`, `blobbifyRangeBlocking()`, `unblobbifyRange()`,
+  `listBlobbifiedRanges()`, `verifyBlobRange()`, `flushBlobRange()`,
+  `purgeBlobGranules()` and `waitPurgeGranulesComplete()` (backed by the
+  `fdb_database_blobbify_range*` / `unblobbify_range` /
+  `list_blobbified_ranges` / `verify_blob_range` / `flush_blob_range` /
+  `purge_blob_granules` / `wait_purge_granules_complete` symbols), plus the
+  `Database::LATEST_VERSION` (`-2`) version sentinel. Tenant level
+  (`Tenant`): the same eight operations backed by the `fdb_tenant_*`
+  equivalents. Transaction level (`ReadTransaction`): `getBlobGranuleRanges()`
+  (backed by `fdb_transaction_get_blob_granule_ranges`). Range results are
+  returned as the new `CrazyGoat\FoundationDB\KeyRange` value object via the
+  new `Future\FutureKeyRangeArray` future (bound
+  `fdb_future_get_keyrange_array`); the FDB `FDBKeyRange` layout is declared
+  packed in the FFI header. The docker-compose test cluster is configured
+  with `blob_granules_enabled=1` and the lifecycle is covered by
+  `tests/Integration/BlobGranuleTest.php`; documented in
+  `docs/blob-granules.md`. Direct granule reads
+  (`fdb_transaction_read_blob_granules` + `FDBReadBlobGranuleContext`) and
+  the summarize/parse-file family remain unbound (follow-ups on #93).
+
 ### Security
 - [#49] The FoundationDB client library can now be loaded from a pinned
   absolute path via the `FDB_LIBRARY_PATH` environment variable, instead of

@@ -29,6 +29,14 @@ final class NativeClient
             int key_length;
         } FDBKey;
 
+        /* Memory layout of keyrange (packed via #pragma pack(4) in fdb_c.h). */
+        typedef struct __attribute__((packed)) {
+            const char* begin_key;
+            int begin_key_length;
+            const char* end_key;
+            int end_key_length;
+        } FDBKeyRange;
+
         /* Memory layout of KeySelectorRef (packed via #pragma pack(4) in fdb_c.h). */
         typedef struct __attribute__((packed)) {
             FDBKey key;
@@ -115,6 +123,7 @@ final class NativeClient
         );
         fdb_error_t fdb_future_get_key_array(FDBFuture* f, const FDBKey** out_keys, int* out_count);
         fdb_error_t fdb_future_get_string_array(FDBFuture* f, const char*** out_strings, int* out_count);
+        fdb_error_t fdb_future_get_keyrange_array(FDBFuture* f, const FDBKeyRange** out_ranges, int* out_count);
 
         fdb_error_t fdb_create_database(const char* cluster_file_path, FDBDatabase** out_database);
         fdb_error_t fdb_create_database_from_connection_string(
@@ -139,10 +148,72 @@ final class NativeClient
         fdb_error_t fdb_database_open_tenant(
             FDBDatabase* d, const char* tenant_name, int tenant_name_length, FDBTenant** out_tenant
         );
+        FDBFuture* fdb_database_blobbify_range(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length
+        );
+        FDBFuture* fdb_database_blobbify_range_blocking(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length
+        );
+        FDBFuture* fdb_database_unblobbify_range(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length
+        );
+        FDBFuture* fdb_database_list_blobbified_ranges(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, int range_limit
+        );
+        FDBFuture* fdb_database_verify_blob_range(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, int64_t version
+        );
+        FDBFuture* fdb_database_flush_blob_range(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, fdb_bool_t compact, int64_t version
+        );
+        FDBFuture* fdb_database_purge_blob_granules(
+            FDBDatabase* d, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, int64_t purge_version, fdb_bool_t force
+        );
+        FDBFuture* fdb_database_wait_purge_granules_complete(
+            FDBDatabase* d, const char* purge_key_name, int purge_key_name_length
+        );
 
         void fdb_tenant_destroy(FDBTenant* t);
         fdb_error_t fdb_tenant_create_transaction(FDBTenant* t, FDBTransaction** out_transaction);
         FDBFuture* fdb_tenant_get_id(FDBTenant* tenant);
+        FDBFuture* fdb_tenant_blobbify_range(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length
+        );
+        FDBFuture* fdb_tenant_blobbify_range_blocking(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length
+        );
+        FDBFuture* fdb_tenant_unblobbify_range(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length
+        );
+        FDBFuture* fdb_tenant_list_blobbified_ranges(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, int range_limit
+        );
+        FDBFuture* fdb_tenant_verify_blob_range(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, int64_t version
+        );
+        FDBFuture* fdb_tenant_flush_blob_range(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, fdb_bool_t compact, int64_t version
+        );
+        FDBFuture* fdb_tenant_purge_blob_granules(
+            FDBTenant* t, const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length, int64_t purge_version, fdb_bool_t force
+        );
+        FDBFuture* fdb_tenant_wait_purge_granules_complete(
+            FDBTenant* t, const char* purge_key_name, int purge_key_name_length
+        );
 
         void fdb_transaction_destroy(FDBTransaction* tr);
         void fdb_transaction_cancel(FDBTransaction* tr);
@@ -194,6 +265,12 @@ final class NativeClient
         );
         FDBFuture* fdb_transaction_get_addresses_for_key(
             FDBTransaction* tr, const char* key_name, int key_name_length
+        );
+        FDBFuture* fdb_transaction_get_blob_granule_ranges(
+            FDBTransaction* tr,
+            const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length,
+            int range_limit
         );
         void fdb_transaction_set(
             FDBTransaction* tr,

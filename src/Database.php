@@ -11,6 +11,12 @@ use FFI\CData;
 
 final class Database implements Transactor, ReadTransactor
 {
+    /**
+     * Sentinel version for blob granule APIs meaning "the latest version" —
+     * accepted by `verifyBlobRange()` and `flushBlobRange()`.
+     */
+    public const LATEST_VERSION = -2;
+
     private bool $closed = false;
 
     public function __construct(
@@ -386,6 +392,224 @@ final class Database implements Transactor, ReadTransactor
         return $this->transact(
             fn (Transaction $tr): array => $tr->getRangeSplitPoints($begin, $end, $chunkSize)->await(),
         );
+    }
+
+    /**
+     * Request that the given range be blobbified (materialized to blob
+     * storage as blob granules). Backed by `fdb_database_blobbify_range`.
+     *
+     * Requires the cluster to have blob granules enabled
+     * (`blob_granules_enabled=1`).
+     */
+    public function blobbifyRange(string $begin, string $end): void
+    {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new FutureVoid(
+            $this->client->fdb->fdb_database_blobbify_range(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+            ),
+            $this->client,
+        );
+
+        $future->await();
+    }
+
+    /**
+     * Blocking variant of `blobbifyRange()` that only returns once the
+     * blobbified range is durably committed. Backed by
+     * `fdb_database_blobbify_range_blocking`.
+     */
+    public function blobbifyRangeBlocking(string $begin, string $end): void
+    {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new FutureVoid(
+            $this->client->fdb->fdb_database_blobbify_range_blocking(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+            ),
+            $this->client,
+        );
+
+        $future->await();
+    }
+
+    /**
+     * Remove the blob manager's knowledge of the given blobbified range,
+     * deleting the granule data it holds. Backed by
+     * `fdb_database_unblobbify_range`.
+     */
+    public function unblobbifyRange(string $begin, string $end): void
+    {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new FutureVoid(
+            $this->client->fdb->fdb_database_unblobbify_range(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+            ),
+            $this->client,
+        );
+
+        $future->await();
+    }
+
+    /**
+     * List the blobbified ranges within the given range. Backed by
+     * `fdb_database_list_blobbified_ranges`.
+     *
+     * @param int $rangeLimit Maximum number of ranges to return (0 = unlimited).
+     *
+     * @return list<KeyRange>
+     */
+    public function listBlobbifiedRanges(string $begin, string $end, int $rangeLimit = 0): array
+    {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new Future\FutureKeyRangeArray(
+            $this->client->fdb->fdb_database_list_blobbified_ranges(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+                $rangeLimit,
+            ),
+            $this->client,
+        );
+
+        return $future->await();
+    }
+
+    /**
+     * Verify that the given range is blobbified at (or after) the given
+     * version. Backed by `fdb_database_verify_blob_range`.
+     *
+     * @param int $version Version to verify; `self::LATEST_VERSION` (-2) for
+     *                     the latest version.
+     */
+    public function verifyBlobRange(string $begin, string $end, int $version = self::LATEST_VERSION): bool
+    {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new Future\FutureBool(
+            $this->client->fdb->fdb_database_verify_blob_range(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+                $version,
+            ),
+            $this->client,
+        );
+
+        return $future->await();
+    }
+
+    /**
+     * Flush the given range to blob storage, optionally compacting the
+     * granule files. Backed by `fdb_database_flush_blob_range`.
+     *
+     * @param int $version Version to flush at; `self::LATEST_VERSION` (-2) for
+     *                     the latest version.
+     */
+    public function flushBlobRange(
+        string $begin,
+        string $end,
+        bool $compact = false,
+        int $version = self::LATEST_VERSION,
+    ): void {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new FutureVoid(
+            $this->client->fdb->fdb_database_flush_blob_range(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+                $compact ? 1 : 0,
+                $version,
+            ),
+            $this->client,
+        );
+
+        $future->await();
+    }
+
+    /**
+     * Purge the blob granules for the given range: clears the data from
+     * FDB's storage servers once it is safely in blob storage. Backed by
+     * `fdb_database_purge_blob_granules`.
+     *
+     * Follow up with `waitPurgeGranulesComplete()` using the key returned
+     * for tracking, or the range's end key.
+     *
+     * @param int $purgeVersion Version to purge to; `self::LATEST_VERSION` (-2) for
+     *                          the latest version.
+     */
+    public function purgeBlobGranules(
+        string $begin,
+        string $end,
+        bool $force = false,
+        int $purgeVersion = self::LATEST_VERSION,
+    ): void {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        $future = new FutureVoid(
+            $this->client->fdb->fdb_database_purge_blob_granules(
+                $this->dpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+                $purgeVersion,
+                $force ? 1 : 0,
+            ),
+            $this->client,
+        );
+
+        $future->await();
+    }
+
+    /**
+     * Block until all granules for the range started by
+     * `purgeBlobGranules()` have been purged. Backed by
+     * `fdb_database_wait_purge_granules_complete`.
+     */
+    public function waitPurgeGranulesComplete(string $purgeKey): void
+    {
+        $purgeKeyLength = KeyValueLimits::assertValidRangeEndpoint($purgeKey);
+
+        $future = new FutureVoid(
+            $this->client->fdb->fdb_database_wait_purge_granules_complete(
+                $this->dpointer,
+                $purgeKey,
+                $purgeKeyLength,
+            ),
+            $this->client,
+        );
+
+        $future->await();
     }
 
     public function getMainThreadBusyness(): float
