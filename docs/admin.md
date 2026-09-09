@@ -33,27 +33,27 @@ call site, before the transaction is opened.
 
 ## Cluster Configuration
 
+**Not supported via AdminClient.** `configure()` is deprecated and throws
+`\LogicException` synchronously (after validating its argument). FoundationDB
+does not expose cluster-wide configuration (redundancy mode, storage engine)
+through the special-key space: the documented `\xff\xff/configuration/`
+module only covers process class types
+(`\xff\xff/configuration/process/class_type/<address>`) and coordinators
+(`\xff\xff/configuration/coordinators/*`), and writes to any other key in
+that prefix fail at commit with `special_keys_no_module_found`. Cluster
+configuration must be performed with the `fdbcli` `configure` command
+instead (e.g. `fdbcli -C fdb.cluster --exec 'configure double ssd'`).
+
 ```php
-// Configure redundancy and storage engine
-$admin->configure('double ssd');
-
-// Single token is also accepted — storage defaults to "ssd" matching FDB.
-$admin->configure('single');
+// Still validates the token shape ([A-Za-z0-9_-]{1,64}, 1-2 tokens) before
+// throwing, so a malformed string keeps failing with a precise
+// \InvalidArgumentException.
+try {
+    $admin->configure('double ssd');
+} catch (\LogicException $e) {
+    // use fdbcli `configure` instead
+}
 ```
-
-`configure()` splits its argument on whitespace and accepts one
-(`<redundancy>`) or two (`<redundancy> <storage>`) tokens. Each token must
-match `[A-Za-z0-9_-]{1,64}` — control bytes, high bytes, dots, colons, and
-surrounding whitespace are rejected so a malformed string cannot be silently
-parsed by FDB. Malformed input raises `\InvalidArgumentException` before the
-transaction begins.
-
-The configured values are written to two Special Keys:
-
-| Special Key                          | Value (`configure('double ssd')`) |
-|--------------------------------------|-----------------------------------|
-| `\xff\xff/configuration/redundancy`  | `double`                          |
-| `\xff\xff/configuration/storage`     | `ssd`                             |
 
 ## Server Management
 
@@ -87,17 +87,23 @@ $isConsistent = $admin->consistencyCheck(); // bool
 
 ## Force Recovery
 
+**Not supported via AdminClient.** `forceRecovery()` is deprecated and throws
+`\LogicException` synchronously (after validating its argument). Forced
+recovery is performed by the cluster controller over an RPC
+(`fdbcli` command `force_recovery_with_data_loss <dcid>`) — there is no
+`\xff\xff/management/force_recovery` special key, and a write to that key
+fails at commit with `special_keys_no_module_found`. Use the `fdbcli`
+`force_recovery_with_data_loss` command instead.
+
 **WARNING: May cause data loss!**
 
 ```php
-// Emergency operation
-$admin->forceRecovery('dc_id');
+try {
+    $admin->forceRecovery('dc_id'); // throws \LogicException
+} catch (\LogicException $e) {
+    // use fdbcli `force_recovery_with_data_loss` instead
+}
 ```
-
-The `dcId` argument is validated against `[A-Za-z0-9_-]{1,64}` and rejected
-if empty. (Note: dots and colons are explicitly forbidden here even though
-they are permitted in tenant names and server addresses, because FoundationDB
-does not accept them in the `\xff\xff/management/force_recovery` key path.)
 
 ## Validation contract summary
 
@@ -111,8 +117,8 @@ before opening a transaction. The full contract is:
 | `excludeServer`   | server address (host:port)       | `[A-Za-z0-9._:-]`                | 256 bytes  | `\InvalidArgumentException`               |
 | `includeServer`   | server address (host:port)       | `[A-Za-z0-9._:-]`                | 256 bytes  | `\InvalidArgumentException`               |
 | `rebootWorker`    | server address                   | `[A-Za-z0-9._:-]`                | 256 bytes  | `\InvalidArgumentException`               |
-| `configure`       | 1 or 2 whitespace-split tokens   | `[A-Za-z0-9_-]` per token        | 64 bytes   | `\InvalidArgumentException`               |
-| `forceRecovery`   | dcId                             | `[A-Za-z0-9_-]`                  | 64 bytes   | `\InvalidArgumentException`               |
+| `configure`       | 1 or 2 whitespace-split tokens   | `[A-Za-z0-9_-]` per token        | 64 bytes   | `\InvalidArgumentException`, then `\LogicException` (unsupported operation) |
+| `forceRecovery`   | dcId                             | `[A-Za-z0-9_-]`                  | 64 bytes   | `\InvalidArgumentException`, then `\LogicException` (unsupported operation) |
 
 Byte-level safety is shared with `KeyValueLimits`: every Special Key path
 spliced together from caller input is also checked against the FDB key size
@@ -126,9 +132,9 @@ limit (10,000 bytes) and the FFI 32-bit length boundary.
 | `deleteTenant` | `string $name` | `void` | Delete a tenant |
 | `listTenants` | — | `list<string>` | List all tenants |
 | `rebootWorker` | `string $address, bool $checkFile = false, int $suspendDuration = 0` | `void` | Reboot worker |
-| `configure` | `string $configuration` | `void` | Configure cluster |
+| `configure` | `string $configuration` | `void` | Deprecated — throws `\LogicException` (unsupported by special keys) |
 | `excludeServer` | `string $address` | `void` | Exclude server |
 | `includeServer` | `string $address` | `void` | Include server |
 | `consistencyCheck` | — | `bool` | Check consistency |
 | `getClusterStatus` | — | `array<string, mixed>` | Get cluster status |
-| `forceRecovery` | `string $dcId` | `void` | Force recovery |
+| `forceRecovery` | `string $dcId` | `void` | Deprecated — throws `\LogicException` (unsupported by special keys) |

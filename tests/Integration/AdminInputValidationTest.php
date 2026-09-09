@@ -134,56 +134,61 @@ final class AdminInputValidationTest extends TestCase
     }
 
     #[Test]
-    public function configureWithTwoTokensWritesBothSpecialKeys(): void
+    public function configureIsNotSupportedAndThrowsBeforeReachingFdb(): void
     {
-        $originalRedundancy = $this->getDatabase()->get("\xff\xff/configuration/redundancy");
-        $originalStorage = $this->getDatabase()->get("\xff\xff/configuration/storage");
+        // FoundationDB does not expose cluster configuration (redundancy
+        // mode, storage engine) through the special-key space: the documented
+        // \xff\xff/configuration/ module only covers process class types and
+        // coordinators. A write to \xff\xff/configuration/redundancy fails at
+        // commit with special_keys_no_module_found (verified against a live
+        // cluster before this fix). configure() therefore throws
+        // synchronously instead of failing opaquely at commit time.
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/not supported.*fdbcli/s');
 
-        try {
-            $this->admin->configure('double ssd');
-
-            self::assertSame(
-                'double',
-                $this->getDatabase()->get("\xff\xff/configuration/redundancy"),
-            );
-            self::assertSame(
-                'ssd',
-                $this->getDatabase()->get("\xff\xff/configuration/storage"),
-            );
-        } finally {
-            // Restore originals so we do not leave the cluster in a
-            // different state than we found it.
-            if ($originalRedundancy !== null) {
-                $this->admin->configure($originalRedundancy . ' ' . ($originalStorage ?? 'ssd'));
-            }
-        }
+        $this->admin->configure('double ssd');
     }
 
     #[Test]
-    public function configureWithSingleTokenDefaultsStorageToSsd(): void
+    public function configureWritesNothingToTheSpecialKeyspace(): void
     {
-        // Round-trip via 'single' which is a FoundationDB-supported
-        // redundancy level; storage falls back to 'ssd' per FDB
-        // semantics.
-        $originalRedundancy = $this->getDatabase()->get("\xff\xff/configuration/redundancy");
-        $originalStorage = $this->getDatabase()->get("\xff\xff/configuration/storage");
-
         try {
-            $this->admin->configure('single');
-
-            self::assertSame(
-                'single',
-                $this->getDatabase()->get("\xff\xff/configuration/redundancy"),
-            );
-            self::assertSame(
-                'ssd',
-                $this->getDatabase()->get("\xff\xff/configuration/storage"),
-            );
-        } finally {
-            if ($originalRedundancy !== null) {
-                $this->admin->configure($originalRedundancy . ' ' . ($originalStorage ?? 'ssd'));
-            }
+            $this->admin->configure('double ssd');
+        } catch (\LogicException) {
+            // expected — see configureIsNotSupportedAndThrowsBeforeReachingFdb
         }
+
+        // Nothing may have been written into the special keyspace: the
+        // configuration module carries only pre-existing keys (process class
+        // sources, coordinators) — no redundancy/storage keys may appear.
+        $db = $this->getDatabase();
+        self::assertNull($db->get("\xff\xff/configuration/redundancy"));
+        self::assertNull($db->get("\xff\xff/configuration/storage"));
+    }
+
+    #[Test]
+    public function forceRecoveryIsNotSupportedAndThrowsBeforeReachingFdb(): void
+    {
+        // Forced recovery is an RPC to the cluster controller (fdbcli
+        // `force_recovery_with_data_loss`); there is no
+        // \xff\xff/management/force_recovery special key, and writing it
+        // fails at commit with special_keys_no_module_found.
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/not supported.*force_recovery_with_data_loss/s');
+
+        $this->admin->forceRecovery('dc1');
+    }
+
+    #[Test]
+    public function forceRecoveryWritesNothingToTheSpecialKeyspace(): void
+    {
+        try {
+            $this->admin->forceRecovery('dc1');
+        } catch (\LogicException) {
+            // expected — see forceRecoveryIsNotSupportedAndThrowsBeforeReachingFdb
+        }
+
+        self::assertNull($this->getDatabase()->get("\xff\xff/management/force_recovery"));
     }
 
     // ---------------------------------------------------------------------
@@ -384,13 +389,14 @@ final class AdminInputValidationTest extends TestCase
         // tenants appear (none).
         $tenants = $this->admin->listTenants();
 
-        foreach ($tenants as $tenantInCluster) {
-            self::assertStringNotContainsString(
-                '/',
-                $tenantInCluster,
-                'Tenant map was written with a slash-containing name — validation gate failed',
-            );
-        }
+        // No rejected input may have created a tenant, in particular none of
+        // the pathological slash/control-byte names.
+        $slashTenants = array_filter($tenants, static fn (string $t): bool => str_contains($t, '/'));
+        self::assertSame(
+            [],
+            $slashTenants,
+            'Tenant map was written with a slash-containing name — validation gate failed',
+        );
     }
 
     // ---------------------------------------------------------------------

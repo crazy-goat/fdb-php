@@ -39,6 +39,16 @@ namespace CrazyGoat\FoundationDB;
  * 0x80–0xFF, and `"/"`, so a tenant name or address containing a slash,
  * any control byte, a high byte, or whitespace cannot address a different
  * Special Key sub-path than the one intended.
+ *
+ * ## Unsupported operations
+ *
+ * `configure()` and `forceRecovery()` are deprecated and throw
+ * `\LogicException` synchronously (after input validation): FoundationDB
+ * does not expose cluster configuration (redundancy mode, storage engine)
+ * or forced recovery through the special-key space — the corresponding
+ * writes fail at commit with `special_keys_no_module_found`. Use the
+ * `fdbcli` `configure` and `force_recovery_with_data_loss` commands
+ * instead. See issue #43.
  */
 final readonly class AdminClient
 {
@@ -228,34 +238,40 @@ final readonly class AdminClient
     /**
      * Configure the database.
      *
-     * Uses special keys to change database configuration.
+     * @deprecated NOT SUPPORTED by the FoundationDB special-key space and
+     *             scheduled for removal. Cluster-wide configuration options
+     *             (redundancy mode, storage engine) are not exposed through
+     *             any special-key module: the documented
+     *             `\xff\xff/configuration/` module only covers process class
+     *             types and coordinators, and writes to any other key in that
+     *             prefix fail at commit with `special_keys_no_module_found`.
+     *             Cluster configuration must be performed with the `fdbcli`
+     *             `configure` command instead. This method now throws a
+     *             `\LogicException` synchronously instead of failing opaquely
+     *             at commit time.
      *
-     * Accepts a whitespace-separated token sequence; the first token is the
-     * redundancy level (e.g. `single`, `double`, `triple`) and the second
-     * is the storage engine (e.g. `ssd`, `memory`, `hdd`). With one token,
-     * the storage engine defaults to `ssd` (matching FoundationDB's own
-     * behaviour). Each token must match `[A-Za-z0-9_-]{1,64}` and the
-     * total count must be either 1 or 2; any other shape is rejected
-     * here so a malformed string cannot write into a wrong Special Key.
+     * The argument is still validated first ({@see self::parseConfiguration()})
+     * so a malformed configuration string keeps failing with a precise
+     * `\InvalidArgumentException`.
      *
      * @param string $configuration Configuration string (e.g., "double ssd")
      *
      * @throws \InvalidArgumentException If the configuration string is empty,
      *                                    contains too few/many tokens, or any
      *                                    token is malformed.
-     * @throws FDBException              If configuration fails.
+     * @throws \LogicException           Always — see the deprecation note.
      */
-    public function configure(string $configuration): void
+    public function configure(string $configuration): never
     {
-        [$redundancy, $storage] = $this->parseConfiguration($configuration);
+        $this->parseConfiguration($configuration);
 
-        $this->database->transact(function (Transaction $tr) use ($redundancy, $storage): void {
-            $tr->options()->setSpecialKeySpaceEnableWrites();
-
-            // Set configuration via special keys
-            $tr->set("\xff\xff/configuration/redundancy", $redundancy);
-            $tr->set("\xff\xff/configuration/storage", $storage);
-        });
+        throw new \LogicException(
+            'AdminClient::configure() is not supported: FoundationDB does not expose cluster '
+            . 'configuration (redundancy mode, storage engine) through the special-key space — the '
+            . '\xff\xff/configuration/ module only covers process class types and coordinators, and '
+            . 'writes to any other key in that prefix fail at commit with special_keys_no_module_found. '
+            . 'Use the fdbcli `configure` command instead. See issue #43.',
+        );
     }
 
     /**
@@ -375,27 +391,41 @@ final readonly class AdminClient
     /**
      * Force database recovery (use with caution!).
      *
-     * This is an emergency operation that forces the database to recover.
-     * May result in data loss if recent mutations haven't been replicated.
+     * @deprecated NOT SUPPORTED by the FoundationDB special-key space and
+     *             scheduled for removal. Forced recovery is performed by the
+     *             cluster controller over an RPC
+     *             (`IClusterConnectionRecord::forceRecovery`, exposed in
+     *             `fdbcli` as `force_recovery_with_data_loss <dcid>`) — there
+     *             is no `\xff\xff/management/force_recovery` special key, and
+     *             a write to that key fails at commit with
+     *             `special_keys_no_module_found`. Use the `fdbcli`
+     *             `force_recovery_with_data_loss` command instead. This
+     *             method now throws a `\LogicException` synchronously instead
+     *             of failing opaquely at commit time.
+     *
+     * The dcId is still validated first ({@see self::validateToken()}) so a
+     * malformed identifier keeps failing with a precise
+     * `\InvalidArgumentException`.
      *
      * @param string $dcId Datacenter ID to recover into. Must match
      *                     `[A-Za-z0-9_-]{1,64}`.
      *
      * @throws \InvalidArgumentException If `$dcId` is invalid.
-     * @throws FDBException              If recovery fails.
+     * @throws \LogicException           Always — see the deprecation note.
      *
      * @warning This operation may cause data loss. Use only in emergency situations.
      */
-    public function forceRecovery(string $dcId): void
+    public function forceRecovery(string $dcId): never
     {
         $this->validateToken($dcId, 'forceRecovery');
 
-        $this->database->transact(function (Transaction $tr) use ($dcId): void {
-            $tr->options()->setSpecialKeySpaceEnableWrites();
-
-            // Use special key to force recovery
-            $tr->set("\xff\xff/management/force_recovery", $dcId);
-        });
+        throw new \LogicException(
+            'AdminClient::forceRecovery() is not supported: forced recovery is performed by the '
+            . 'cluster controller over an RPC and has no special-key representation — there is no '
+            . '\xff\xff/management/force_recovery key, and a write to it fails at commit with '
+            . 'special_keys_no_module_found. Use the fdbcli `force_recovery_with_data_loss` command '
+            . 'instead. See issue #43.',
+        );
     }
 
     // ----------------------------------------------------------------------

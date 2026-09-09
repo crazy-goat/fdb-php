@@ -152,6 +152,19 @@
   `readTransact()` loops against a live cluster.
 
 ### Changed
+- [#43] `AdminClient::configure()` and `AdminClient::forceRecovery()` are
+  deprecated and now throw `\LogicException` synchronously (after input
+  validation) instead of writing to special keys that do not exist in the
+  FoundationDB special-key space. Verified against a live cluster: a write to
+  `\xff\xff/configuration/redundancy` (or `/storage`) and to
+  `\xff\xff/management/force_recovery` fails at commit with
+  `special_keys_no_module_found` — the documented `\xff\xff/configuration/`
+  module only covers process class types and coordinators, and forced
+  recovery is an RPC to the cluster controller (`fdbcli`
+  `force_recovery_with_data_loss`), not a special key. Both methods keep
+  validating their arguments first, so a malformed string still fails with a
+  precise `\InvalidArgumentException`. Use the `fdbcli` `configure` and
+  `force_recovery_with_data_loss` commands instead. `docs/admin.md` updated.
 - [#54] Maintainability refactor (`src/Directory/HighContentionAllocator.php`,
   `src/Directory/DirectoryLayer.php`). `DirectoryLayer` now uses the imported
   `CrazyGoat\FoundationDB\Subspace` class (via `use`) instead of repeating the
