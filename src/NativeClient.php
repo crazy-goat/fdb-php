@@ -94,6 +94,7 @@ final class NativeClient
         fdb_error_t fdb_setup_network();
         fdb_error_t fdb_run_network();
         fdb_error_t fdb_stop_network();
+        const char* fdb_get_client_version();
 
         void fdb_future_destroy(FDBFuture* f);
         void fdb_future_release_memory(FDBFuture* f);
@@ -102,6 +103,7 @@ final class NativeClient
         fdb_bool_t fdb_future_is_ready(FDBFuture* f);
         fdb_error_t fdb_future_get_error(FDBFuture* f);
         fdb_error_t fdb_future_get_int64(FDBFuture* f, int64_t* out);
+        fdb_error_t fdb_future_get_uint64(FDBFuture* f, uint64_t* out);
         fdb_error_t fdb_future_get_double(FDBFuture* f, double* out);
         fdb_error_t fdb_future_get_bool(FDBFuture* f, fdb_bool_t* out);
         fdb_error_t fdb_future_get_key(FDBFuture* f, const char** out_key, int* out_key_length);
@@ -121,6 +123,7 @@ final class NativeClient
         void fdb_database_destroy(FDBDatabase* d);
         double fdb_database_get_main_thread_busyness(FDBDatabase* d);
         FDBFuture* fdb_database_get_client_status(FDBDatabase* d);
+        FDBFuture* fdb_database_get_server_protocol(FDBDatabase* d, uint64_t expected_version);
         fdb_error_t fdb_database_set_option(FDBDatabase* d, int option, const void* value, int value_length);
         fdb_error_t fdb_database_create_transaction(FDBDatabase* d, FDBTransaction** out_transaction);
         FDBFuture* fdb_database_reboot_worker(
@@ -260,6 +263,21 @@ final class NativeClient
     /** @var \FFI\CData|null Handle returned by dlopen('libfdb_c.so'), closed in stopNetwork(). */
     private ?CData $fdbLibraryHandle = null;
 
+    /**
+     * Callables registered via `FoundationDB::onNetworkThreadCompletion()`,
+     * invoked once from stopNetwork() after the FDB network thread has been
+     * joined. Deliberately NOT registered through the native
+     * `fdb_add_network_thread_completion_hook()` API: native completion
+     * hooks run on the FDB network thread, where executing PHP is unsafe
+     * (the Zend engine is not re-entrant). Running them on the main thread
+     * after pthread_join() preserves the ordering guarantee (the network
+     * thread — and therefore all native hooks — has already finished), so
+     * they are safe places to flush traces/metrics at shutdown.
+     *
+     * @var list<callable(): void>
+     */
+    private array $networkCompletionHooks = [];
+
     private function __construct()
     {
         $this->fdb = FFI::cdef(self::FDB_HEADER, 'libfdb_c.so');
@@ -386,6 +404,34 @@ final class NativeClient
         $this->networkThread = null;
     }
 
+    /**
+     * Register a callable to be invoked once when the FDB network thread
+     * stops, i.e. from stopNetwork() after the network thread has been
+     * joined. Useful for flushing traces/metrics at shutdown.
+     *
+     * NOTE: the callable is executed on the PHP main thread, not on the FDB
+     * network thread. The native `fdb_add_network_thread_completion_hook()`
+     * API is intentionally not used for PHP callables: its hook runs on the
+     * network thread, where executing PHP is unsafe. The deferred invocation
+     * in stopNetwork() happens strictly after the network thread (and any
+     * native hooks) has finished, so the ordering guarantee users rely on
+     * is preserved.
+     */
+    public function onNetworkThreadCompletion(callable $hook): void
+    {
+        $this->networkCompletionHooks[] = $hook;
+    }
+
+    /**
+     * @internal
+     *
+     * @return list<callable(): void>
+     */
+    public function getNetworkCompletionHooks(): array
+    {
+        return $this->networkCompletionHooks;
+    }
+
     public function stopNetwork(): void
     {
         if (!$this->networkStarted) {
@@ -413,6 +459,15 @@ final class NativeClient
         $this->networkStarted = false;
         $this->networkSetup = false;
         $this->networkThread = null;
+
+        // Invoke registered completion hooks after the network thread has
+        // been joined and all native state has been torn down, so hooks can
+        // safely flush traces/metrics. Registered hooks are consumed.
+        $hooks = $this->networkCompletionHooks;
+        $this->networkCompletionHooks = [];
+        foreach ($hooks as $hook) {
+            $hook();
+        }
     }
 
     public function isNetworkStarted(): bool

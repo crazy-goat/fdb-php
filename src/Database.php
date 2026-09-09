@@ -397,6 +397,25 @@ final class Database implements Transactor, ReadTransactor
     }
 
     /**
+     * Get the protocol version spoken by the cluster this database is
+     * connected to (backed by `fdb_database_get_server_protocol`).
+     *
+     * Lets a client detect the cluster's protocol version and therefore
+     * whether the loaded client library can talk to it. Called with
+     * `expected_version = 0`, meaning "no expectation" — the future resolves
+     * to the protocol version currently in use by the cluster.
+     */
+    public function getServerProtocol(): int
+    {
+        $future = new Future\FutureUInt64(
+            $this->client->fdb->fdb_database_get_server_protocol($this->dpointer, 0),
+            $this->client,
+        );
+
+        return $future->await();
+    }
+
+    /**
      * Get the client status of the database.
      *
      * @param bool $asArray When true, returns the decoded status as an associative array,

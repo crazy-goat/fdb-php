@@ -177,4 +177,28 @@ final class NetworkLifecycleTest extends TestCase
         self::assertFalse($client->isNetworkStarted());
         self::assertFalse($client->isNetworkSetup());
     }
+
+    /**
+     * Runs in a separate process for the same reason as above: stopping the
+     * network is only possible once per process. Verifies that completion
+     * hooks registered via `FoundationDB::onNetworkThreadCompletion()` are
+     * invoked exactly once, after the network has actually stopped.
+     */
+    #[Test]
+    #[RunInSeparateProcess]
+    public function networkCompletionHooksRunOnStopNetwork(): void
+    {
+        $calls = [];
+        FoundationDB::onNetworkThreadCompletion(function () use (&$calls): void {
+            $calls[] = 'flush-traces';
+        });
+
+        FoundationDB::open();
+        self::assertSame([], $calls, 'Hooks must not run before the network stops');
+
+        $client = NativeClient::getInstance();
+        $client->stopNetwork();
+
+        self::assertSame(['flush-traces'], $calls);
+    }
 }
