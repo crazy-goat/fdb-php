@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- [#97] Disaster-recovery C API bindings in `AdminClient`:
+  `createSnapshot(string $uid, string $snapCommand)` (backed by
+  `fdb_database_create_snapshot`, the `fdbcli snapshot` entry point; the UID
+  must be exactly 32 hexadecimal characters and the command printable ASCII,
+  validated before the FFI call) and
+  `forceRecoveryWithDataLoss(string $dcId)` (backed by
+  `fdb_database_force_recovery_with_data_loss`, the
+  `fdbcli force_recovery_with_data_loss <dcid>` entry point — data loss is
+  in the name).
+### Changed
+- [#97] `AdminClient::forceRecovery()` is reimplemented on top of
+  `fdb_database_force_recovery_with_data_loss()` and no longer throws
+  `\LogicException` — it is now a working alias of
+  `forceRecoveryWithDataLoss()`. This removes the last attempted
+  special-key write for an operation that the special-key space never
+  supported (`special_keys_no_module_found`). Destructive happy-path
+  coverage lives in `tests/Integration/AdminDestructiveOperationsTest.php`,
+  skipped unless `FDB_ENABLE_DESTRUCTIVE_ADMIN_TESTS=1`.
+### Added
 - [#94] Client/cluster introspection: `FoundationDB::getClientVersion()`
   (backed by `fdb_get_client_version`, the version/build of the loaded
   `libfdb_c`), `Database::getServerProtocol()` (backed by

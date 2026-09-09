@@ -191,20 +191,66 @@ final class AdminClientTest extends TestCase
         $this->createAdminClient()->configure('dou.ble ssd');
     }
 
-    #[Test]
-    public function forceRecoveryThrowsLogicExceptionForValidInput(): void
-    {
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('force_recovery_with_data_loss');
+    // -- Force recovery via the direct C API (#97) ----------------------------
 
-        $this->createAdminClient()->forceRecovery('dc1');
+    #[Test]
+    public function forceRecoveryWithDataLossValidatesDcId(): void
+    {
+        $admin = $this->createAdminClient();
+
+        try {
+            $admin->forceRecoveryWithDataLoss('dc/1');
+            self::fail('Expected \InvalidArgumentException');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('forceRecoveryWithDataLoss', $e->getMessage());
+        }
+
+        try {
+            $admin->forceRecoveryWithDataLoss('');
+            self::fail('Expected \InvalidArgumentException');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('must not be empty', $e->getMessage());
+        }
     }
 
     #[Test]
-    public function forceRecoveryStillValidatesInputBeforeThrowing(): void
+    public function createSnapshotValidatesUid(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $admin = $this->createAdminClient();
 
-        $this->createAdminClient()->forceRecovery('dc/1');
+        foreach (['', 'tooshort', 'g' . str_repeat('0', 31), str_repeat('0', 31), str_repeat('0', 33)] as $bad) {
+            try {
+                $admin->createSnapshot($bad, 'cmd');
+                self::fail("Expected \InvalidArgumentException for UID '$bad'");
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('32 hexadecimal characters', $e->getMessage());
+            }
+        }
+    }
+
+    #[Test]
+    public function createSnapshotValidatesCommand(): void
+    {
+        $admin = $this->createAdminClient();
+        $uid = str_repeat('a', 32);
+
+        foreach (['', "cmd\necho", "cmd\x01", str_repeat('a', 257)] as $bad) {
+            try {
+                $admin->createSnapshot($uid, $bad);
+                self::fail("Expected \InvalidArgumentException for command '$bad'");
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('createSnapshot', $e->getMessage());
+            }
+        }
+
+        // A valid printable command of exactly the max length is accepted up
+        // to the FFI boundary — it must not throw \InvalidArgumentException.
+        try {
+            $admin->createSnapshot($uid, str_repeat('a', 256));
+        } catch (\InvalidArgumentException) {
+            self::fail('A printable 256-byte command must pass validation');
+        } catch (\Throwable) {
+            // Reaching the FFI layer without a live database is fine here.
+        }
     }
 }
