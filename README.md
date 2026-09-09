@@ -347,6 +347,7 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 | [Atomic Operations](docs/atomic-operations.md) | Counters, bitwise ops, compare-and-clear |
 | [Watches](docs/watches.md) | Key monitoring, getAndWatch, setAndWatch |
 | [Tenants](docs/tenants.md) | Multi-tenancy, isolated key spaces |
+| [Blob Granules](docs/blob-granules.md) | Blobbify, list, verify, flush and purge ranges |
 | [Admin Client](docs/admin.md) | Cluster administration, tenant management, status |
 | [Options](docs/options.md) | Network, database, and transaction options |
 | [Error Handling](docs/error-handling.md) | FDBException, error predicates, retry logic |

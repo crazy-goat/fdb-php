@@ -9,6 +9,7 @@ use CrazyGoat\FoundationDB\Future\FutureDouble;
 use CrazyGoat\FoundationDB\Future\FutureInt64;
 use CrazyGoat\FoundationDB\Future\FutureKey;
 use CrazyGoat\FoundationDB\Future\FutureKeyArray;
+use CrazyGoat\FoundationDB\Future\FutureKeyRangeArray;
 use CrazyGoat\FoundationDB\Future\FutureMappedKeyValueArray;
 use CrazyGoat\FoundationDB\Future\FutureStringArray;
 use CrazyGoat\FoundationDB\Future\FutureValue;
@@ -120,6 +121,33 @@ class ReadTransaction
                 $end,
                 $endLength,
                 $chunkSize,
+            ),
+            $this->client,
+        );
+    }
+
+    /**
+     * List the blob granule ranges within the given range. Backed by
+     * `fdb_transaction_get_blob_granule_ranges`.
+     *
+     * Requires the cluster to have blob granules enabled
+     * (`blob_granules_enabled=1`).
+     *
+     * @param int $rangeLimit Maximum number of ranges to return (0 = unlimited).
+     */
+    public function getBlobGranuleRanges(string $begin, string $end, int $rangeLimit = 0): FutureKeyRangeArray
+    {
+        $beginLength = KeyValueLimits::assertValidRangeEndpoint($begin);
+        $endLength = KeyValueLimits::assertValidRangeEndpoint($end);
+
+        return new FutureKeyRangeArray(
+            $this->client->fdb->fdb_transaction_get_blob_granule_ranges(
+                $this->tpointer,
+                $begin,
+                $beginLength,
+                $end,
+                $endLength,
+                $rangeLimit,
             ),
             $this->client,
         );
