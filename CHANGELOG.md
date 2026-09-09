@@ -24,6 +24,27 @@
   (`fdb_transaction_read_blob_granules` + `FDBReadBlobGranuleContext`) and
   the summarize/parse-file family remain unbound (follow-ups on #93).
 
+- [#93] Blob granule API, part 2: granule reads and summaries. Transaction
+  level (`ReadTransaction`): `readBlobGranules()` (backed by
+  `fdb_transaction_read_blob_granules` — a synchronous `FDBResult` call,
+  read via the newly bound `fdb_result_get_keyvalue_array` /
+  `fdb_result_destroy`) with file data fetched through the new
+  `CrazyGoat\FoundationDB\BlobGranuleLoader` interface wired into the
+  `FDBReadBlobGranuleContext` callbacks by
+  `CrazyGoat\FoundationDB\BlobGranuleReadContext` (including the
+  `debugNoMaterialize` test mode and `granuleParallelism`), and
+  `summarizeBlobGranules()` (backed by
+  `fdb_transaction_summarize_blob_granules` + the newly bound
+  `fdb_future_get_granule_summary_array`, with the packed `FDBGranuleSummary`
+  struct declared) returning the new `BlobGranuleSummary` value object via
+  the new `Future\FutureGranuleSummaryArray` future. Integration tests
+  extended in `tests/Integration/BlobGranuleTest.php` (loader validation,
+  debug read request, summary shape; full materialization skips on clusters
+  without a granule blob store); `docs/blob-granules.md` updated. The
+  parse-file family (`fdb_readbg_parse_*`,
+  `fdb_future_readbg_get_descriptions`) remains unbound as a tool-only
+  follow-up on #93.
+
 ### Security
 - [#49] The FoundationDB client library can now be loaded from a pinned
   absolute path via the `FDB_LIBRARY_PATH` environment variable, instead of

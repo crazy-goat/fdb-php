@@ -14,7 +14,8 @@ FDB's storage tier, and how the storage tier can be relieved of cold data.
 > requires blob-manager workers to be recruited (typically backed by a real
 > blob store). On small test clusters no blob workers are recruited and the
 > blocking call never completes — prefer the non-blocking `blobbifyRange()`
-> in such setups.
+> in such setups. The same cluster capability is what gates
+> `readBlobGranules()` and `summarizeBlobGranules()` — see below.
 
 ## API overview
 
@@ -45,11 +46,47 @@ the `fdb_tenant_*` symbols. Keys are relative to the tenant's prefix.
 | Method | Backed by | Description |
 |--------|-----------|-------------|
 | `getBlobGranuleRanges($begin, $end, $rangeLimit = 0)` | `fdb_transaction_get_blob_granule_ranges` | List the granule boundaries within the range; returns a future of `list<KeyRange>`. |
+| `readBlobGranules($begin, $end, $beginVersion, $loader = null, $readVersion = null, $debugNoMaterialize = false, $granuleParallelism = 1)` | `fdb_transaction_read_blob_granules` | Materialize the granules covering the range; returns `list<KeyValue>` (synchronous `FDBResult` call, not a future). |
+| `summarizeBlobGranules($begin, $end, $summaryVersion = null, $rangeLimit = 100)` | `fdb_transaction_summarize_blob_granules` | Summarize the granules in the range; returns a future of `list<BlobGranuleSummary>`. `rangeLimit` must be >= 1 (the client library asserts `chunkLimit > 0`). |
 
-Direct granule *reads* (`fdb_transaction_read_blob_granules` and the
-`FDBReadBlobGranuleContext` load/free callback machinery) are not yet bound —
-see [issue #93](https://github.com/s2x/fdb-php/issues/93) for the remaining
-scope.
+#### `readBlobGranules()` and the loader
+
+`fdb_transaction_read_blob_granules` fetches granule file data through
+caller-supplied callbacks (the `FDBReadBlobGranuleContext` struct). In PHP
+this is expressed as the `CrazyGoat\FoundationDB\BlobGranuleLoader`
+interface:
+
+```php
+interface BlobGranuleLoader
+{
+    public function startLoad(string $filename, int $offset, int $length, int $fullFileLength): int;
+    public function getLoad(int $loadId): string;
+    public function freeLoad(int $loadId): void;
+}
+```
+
+`startLoad()` begins a load and returns a unique id; `getLoad()` returns the
+bytes for that id (the data must stay valid until `freeLoad()` is called);
+`freeLoad()` releases it. The PHP callbacks are wired into the native struct
+by `CrazyGoat\FoundationDB\BlobGranuleReadContext`, which keeps references to
+the callbacks and to any in-flight data buffers.
+
+With `$debugNoMaterialize = true` the loader is never called and only the
+request to the blob workers is issued (useful for testing). A loader is
+required unless `$debugNoMaterialize` is true — otherwise an
+`InvalidArgumentException` is thrown.
+
+> **Note:** both `readBlobGranules()` and `summarizeBlobGranules()` need a
+> cluster with working blob-manager workers and a real granule blob store.
+> On a cluster without one the C API reports
+> `Operation is not supported` (2108) for reads and
+> "Read version is older than blob granule history supports" (1064) for
+> summaries; the integration tests skip accordingly.
+
+The parse-file family (`fdb_readbg_parse_snapshot_file`,
+`fdb_readbg_parse_delta_file`, `fdb_future_readbg_get_descriptions`) — needed
+only by tools reading granule files directly — remains unbound; see
+[issue #93](https://github.com/s2x/fdb-php/issues/93).
 
 ## KeyRange
 

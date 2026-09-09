@@ -16,6 +16,7 @@ final class NativeClient
         typedef struct FDB_database FDBDatabase;
         typedef struct FDB_tenant FDBTenant;
         typedef struct FDB_transaction FDBTransaction;
+        typedef struct FDB_result FDBResult;
 
         typedef struct __attribute__((packed)) {
             const char* key;
@@ -36,6 +37,35 @@ final class NativeClient
             const char* end_key;
             int end_key_length;
         } FDBKeyRange;
+
+        /* Memory layout of granulesummary (packed via #pragma pack(4) in fdb_c.h). */
+        typedef struct __attribute__((packed)) {
+            const char* begin_key;
+            int begin_key_length;
+            const char* end_key;
+            int end_key_length;
+            int64_t snapshot_version;
+            int64_t snapshot_size;
+            int64_t delta_version;
+            int64_t delta_size;
+        } FDBGranuleSummary;
+
+        typedef int64_t (*FDBBGStartLoadFn)(
+            const char* filename, int filename_length,
+            int64_t offset, int64_t length, int64_t full_file_length, void* context
+        );
+        typedef uint8_t* (*FDBBGGetLoadFn)(int64_t load_id, void* context);
+        typedef void (*FDBBGFreeLoadFn)(int64_t load_id, void* context);
+
+        /* FDBReadBlobGranuleContext is not packed in fdb_c.h. */
+        typedef struct {
+            void* user_context;
+            FDBBGStartLoadFn start_load_f;
+            FDBBGGetLoadFn get_load_f;
+            FDBBGFreeLoadFn free_load_f;
+            fdb_bool_t debug_no_materialize;
+            int granule_parallelism;
+        } FDBReadBlobGranuleContext;
 
         /* Memory layout of KeySelectorRef (packed via #pragma pack(4) in fdb_c.h). */
         typedef struct __attribute__((packed)) {
@@ -124,6 +154,14 @@ final class NativeClient
         fdb_error_t fdb_future_get_key_array(FDBFuture* f, const FDBKey** out_keys, int* out_count);
         fdb_error_t fdb_future_get_string_array(FDBFuture* f, const char*** out_strings, int* out_count);
         fdb_error_t fdb_future_get_keyrange_array(FDBFuture* f, const FDBKeyRange** out_ranges, int* out_count);
+        fdb_error_t fdb_future_get_granule_summary_array(
+            FDBFuture* f, const FDBGranuleSummary** out_summaries, int* out_count
+        );
+
+        void fdb_result_destroy(FDBResult* r);
+        fdb_error_t fdb_result_get_keyvalue_array(
+            FDBResult* r, const FDBKeyValue** out_kv, int* out_count, fdb_bool_t* out_more
+        );
 
         fdb_error_t fdb_create_database(const char* cluster_file_path, FDBDatabase** out_database);
         fdb_error_t fdb_create_database_from_connection_string(
@@ -271,6 +309,19 @@ final class NativeClient
             const char* begin_key_name, int begin_key_name_length,
             const char* end_key_name, int end_key_name_length,
             int range_limit
+        );
+        FDBResult* fdb_transaction_read_blob_granules(
+            FDBTransaction* tr,
+            const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length,
+            int64_t begin_version, int64_t read_version,
+            FDBReadBlobGranuleContext granule_context
+        );
+        FDBFuture* fdb_transaction_summarize_blob_granules(
+            FDBTransaction* tr,
+            const char* begin_key_name, int begin_key_name_length,
+            const char* end_key_name, int end_key_name_length,
+            int64_t summary_version, int range_limit
         );
         void fdb_transaction_set(
             FDBTransaction* tr,

@@ -23,6 +23,8 @@ parameters:
           path: src/Transaction.php
         - identifier: method.notFound
           path: src/ReadTransaction.php
+        - identifier: property.notFound
+          path: src/ReadTransaction.php
         - identifier: method.notFound
           path: src/RangeResult.php
         - identifier: method.notFound
@@ -35,3 +37,9 @@ parameters:
           path: src/Future/*.php
         - identifier: method.notFound
           path: src/FDBException.php
+        - identifier: method.staticCall
+          path: src/BlobGranuleReadContext.php
+        - identifier: property.notFound
+          path: src/BlobGranuleReadContext.php
+        - identifier: argument.type
+          path: src/BlobGranuleReadContext.php

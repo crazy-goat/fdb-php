@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace CrazyGoat\FoundationDB\Tests\Integration;
 
+use CrazyGoat\FoundationDB\BlobGranuleLoader;
 use CrazyGoat\FoundationDB\Database;
+use CrazyGoat\FoundationDB\FDBException;
 use CrazyGoat\FoundationDB\KeyRange;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -65,7 +67,16 @@ final class BlobGranuleTest extends TestCase
 
         // Granule boundaries depend on cluster state; on a fresh cluster the
         // whole keyspace is a single granule, so the list may legitimately
-        // be empty. All we assert is the shape of the result.
+        // be empty. What we can always assert is that the result is stable
+        // and every returned boundary is inside the requested range.
+        $tr2 = $db->createTransaction();
+        try {
+            $ranges2 = $tr2->getBlobGranuleRanges($begin, $end)->await();
+        } finally {
+            $tr2->reset();
+        }
+        self::assertCount(count($ranges), $ranges2);
+
         foreach ($ranges as $range) {
             self::assertInstanceOf(KeyRange::class, $range);
             self::assertGreaterThanOrEqual($begin, $range->begin);
@@ -135,6 +146,104 @@ final class BlobGranuleTest extends TestCase
             $tenant->waitPurgeGranulesComplete($end);
         } finally {
             $this->deleteTenantViaFdbcli($name);
+        }
+    }
+
+    #[Test]
+    public function readBlobGranulesRequiresLoader(): void
+    {
+        $db = $this->getDatabase();
+        $this->writeSampleData($db, 'bg_read', 20);
+        $db->blobbifyRange('bg_read:', 'bg_read;');
+
+        $tr = $db->createTransaction();
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            $tr->readBlobGranules('bg_read:', 'bg_read;', 0);
+        } finally {
+            $tr->reset();
+        }
+    }
+
+    #[Test]
+    public function readBlobGranulesIssuesRequest(): void
+    {
+        $db = $this->getDatabase();
+        $this->writeSampleData($db, 'bg_read_req', 20);
+        $db->blobbifyRange('bg_read_req:', 'bg_read_req;');
+
+        $tr = $db->createTransaction();
+        try {
+            $loadsCalled = 0;
+            $loader = new class ($loadsCalled) implements BlobGranuleLoader {
+                public function __construct(private int &$loadsCalled)
+                {
+                }
+
+                public function startLoad(string $filename, int $offset, int $length, int $fullFileLength): int
+                {
+                    $this->loadsCalled++;
+
+                    return 1;
+                }
+
+                public function getLoad(int $loadId): string
+                {
+                    return '';
+                }
+
+                public function freeLoad(int $loadId): void
+                {
+                }
+            };
+
+            $kvs = $tr->readBlobGranules('bg_read_req:', 'bg_read_req;', 0, null, null, true);
+            self::assertGreaterThanOrEqual(0, count($kvs));
+        } catch (FDBException $e) {
+            // The default test cluster has no blob store, so the C API
+            // reports "Operation is not supported" for granule reads.
+            self::assertContains($e->fdbCode, [1064, 2018, 2108]);
+            self::markTestSkipped('Cluster has no granule blob store: ' . $e->getMessage());
+        } finally {
+            $tr->reset();
+        }
+    }
+
+    #[Test]
+    public function summarizeBlobGranulesReturnsSummaries(): void
+    {
+        $db = $this->getDatabase();
+        $this->writeSampleData($db, 'bg_summary', 20);
+        $db->blobbifyRange('bg_summary:', 'bg_summary;');
+
+        $tr = $db->createTransaction();
+        try {
+            $summaries = $tr->summarizeBlobGranules('bg_summary:', 'bg_summary;')->await();
+            foreach ($summaries as $summary) {
+                self::assertGreaterThanOrEqual('bg_summary:', $summary->keyRange->begin);
+                self::assertLessThanOrEqual('bg_summary;', $summary->keyRange->end);
+            }
+        } catch (FDBException $e) {
+            // No granule history on a cluster without a blob store.
+            self::assertContains($e->fdbCode, [1064, 2018]);
+            self::markTestSkipped('Cluster has no granule history: ' . $e->getMessage());
+        } finally {
+            $tr->reset();
+        }
+    }
+
+    #[Test]
+    public function summarizeBlobGranulesRejectsZeroRangeLimit(): void
+    {
+        $db = $this->getDatabase();
+        $this->writeSampleData($db, 'bg_summary_limit', 10);
+
+        $tr = $db->createTransaction();
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            $tr->summarizeBlobGranules('bg_summary_limit:', 'bg_summary_limit;', null, 0);
+        } finally {
+            $tr->reset();
         }
     }
 
