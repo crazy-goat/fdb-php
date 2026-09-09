@@ -63,11 +63,15 @@ final class RangeResultTest extends TestCase
                 return new FutureKvResult([], 0, false);
             }
 
+            // A positive limit further caps the batch size, exactly like the
+            // real server does.
+            $batch = ($limit > 0 && $limit < $batchSize) ? $limit : $batchSize;
+
             if ($reverse) {
-                $from = max($lo, $hi - $batchSize);
+                $from = max($lo, $hi - $batch);
                 $slice = array_reverse(array_slice($data, $from, $hi - $from));
             } else {
-                $to = min($hi, $lo + $batchSize);
+                $to = min($hi, $lo + $batch);
                 $slice = array_slice($data, $lo, $to - $lo);
             }
 
@@ -196,5 +200,91 @@ final class RangeResultTest extends TestCase
         );
 
         self::assertCount(0, iterator_to_array($result));
+    }
+
+    #[Test]
+    public function nextBatchIsPrefetchedBeforeTheCurrentBatchIsConsumed(): void
+    {
+        $data = $this->dataset(1000);
+        $calls = 0;
+        $base = $this->fakeServer($data, 100);
+        $fetcher = static function (
+            KeySelector $begin,
+            KeySelector $end,
+            int $limit,
+            StreamingMode $mode,
+            int $iteration,
+            bool $reverse,
+        ) use (
+            &$calls,
+            $base
+): FutureKvResult {
+            $calls++;
+
+            return $base($begin, $end, $limit, $mode, $iteration, $reverse);
+        };
+
+        $result = RangeResult::paginate(
+            KeySelector::firstGreaterOrEqual('k0000'),
+            KeySelector::firstGreaterOrEqual('k9999'),
+            new RangeOptions(),
+            $fetcher,
+        );
+
+        // Rewind runs the generator up to the first yielded key: the first
+        // batch has been fetched AND the second batch is already in flight
+        // before the consumer has processed a single row.
+        $result->rewind();
+        self::assertSame(2, $calls, 'the second batch must be prefetched while the first is being consumed');
+        self::assertSame('k0000', $result->current()->key);
+
+        $keys = [];
+        foreach ($result as $kv) {
+            $keys[] = $kv->key;
+        }
+
+        // 1000 keys in batches of 100 = exactly 10 round trips, every key once.
+        self::assertCount(1000, $keys);
+        self::assertSame(10, $calls);
+        self::assertSame(array_map(static fn (KeyValue $kv): string => $kv->key, $data), $keys);
+    }
+
+    #[Test]
+    public function limitIsNotExceededByPrefetching(): void
+    {
+        $data = $this->dataset(100);
+        $calls = 0;
+        $base = $this->fakeServer($data, 10);
+        $fetcher = static function (
+            KeySelector $begin,
+            KeySelector $end,
+            int $limit,
+            StreamingMode $mode,
+            int $iteration,
+            bool $reverse,
+        ) use (
+            &$calls,
+            $base
+): FutureKvResult {
+            $calls++;
+            self::assertLessThanOrEqual(25, $limit, 'prefetching must never request more rows than the limit allows');
+
+            return $base($begin, $end, $limit, $mode, $iteration, $reverse);
+        };
+
+        $result = RangeResult::paginate(
+            KeySelector::firstGreaterOrEqual('k0000'),
+            KeySelector::firstGreaterOrEqual('k9999'),
+            new RangeOptions(limit: 25),
+            $fetcher,
+        );
+
+        $keys = [];
+        foreach ($result as $kv) {
+            $keys[] = $kv->key;
+        }
+
+        self::assertCount(25, $keys);
+        self::assertSame(array_map(static fn (KeyValue $kv): string => $kv->key, array_slice($data, 0, 25)), $keys);
     }
 }
