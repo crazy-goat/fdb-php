@@ -29,7 +29,7 @@ for anything that opens a database. CI runs PHP 8.2, 8.3 and 8.4.
 ```bash
 composer install
 
-# Lint: PHPCS + Rector (dry run) + PHPStan (level 9) + shellcheck; check only
+# Lint: PHPCS + Rector (dry run) + PHPStan (level 9) + shellcheck + hadolint; check only
 bin/lint.sh              # same as composer lint and make lint
 bin/lint.sh --fix        # Rector (apply) + PHPCBF, then check (composer lint:fix, make lint-fix)
 composer cs              # PHPCS only
