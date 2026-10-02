@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- [#125] `bin/lint.sh` is the single lint entry point (PHPCS, Rector dry run, PHPStan, shellcheck, hadolint; `--fix` runs Rector and PHPCBF first). `composer lint`, `composer lint:fix`, `make lint`, `make lint-fix` and the CI `lint` job call it; `composer cs`, `phpstan` and `rector` still work.
 - [#119] Development process documentation: `docs/workflow.md` (issue, worktree, review, PR,
   merge) and `docs/release-workflow.md`, `AGENTS.md` with the project commands (`CLAUDE.md`
   now only imports it), worktree scripts under `bin/`, issue forms, a pull request template and

@@ -3,6 +3,8 @@ FROM php:8.2-cli-bookworm
 ARG FDB_VERSION=7.3.75
 ARG TARGETARCH
 
+# DL3008: Debian packages follow the php image's Debian release, pinning them would break on base updates.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         unzip \
@@ -14,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Map the host architecture to the FoundationDB deb suffix (aarch64/amd64).
 # dpkg's architecture is used because TARGETARCH is not always provided by
 # the docker-compose legacy builder.
@@ -23,13 +27,11 @@ RUN FDB_ARCH="$(dpkg --print-architecture | sed 's/^arm64$/aarch64/')" \
     && dpkg -i /tmp/fdb-clients.deb \
     && rm /tmp/fdb-clients.deb
 
-RUN docker-php-ext-install ffi gmp
-
-# Python FoundationDB bindings, used to drive the upstream bindingtester
-# harness (see tests/bindingtester). Must match the libfdb_c version above.
-RUN pip3 install --break-system-packages foundationdb==7.3.75
-
-RUN echo "ffi.enable=true" > /usr/local/etc/php/conf.d/ffi.ini
+# PHP extensions and ffi config. The Python FoundationDB bindings drive the upstream
+# bindingtester harness (see tests/bindingtester); the version must match libfdb_c above.
+RUN docker-php-ext-install ffi gmp \
+    && pip3 install --no-cache-dir --break-system-packages foundationdb==7.3.75 \
+    && echo "ffi.enable=true" > /usr/local/etc/php/conf.d/ffi.ini
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

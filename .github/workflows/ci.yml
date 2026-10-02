@@ -63,7 +63,7 @@ jobs:
             }
 
   lint:
-    name: Lint (PHPCS + Rector + PHPStan)
+    name: Lint
     needs: [changes, check-actor]
     if: needs.changes.outputs.code == 'true' && needs.check-actor.outputs.allowed == 'true'
     runs-on: ubuntu-latest
@@ -85,14 +85,28 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Run PHPCS
-        run: composer cs
+      - name: Install shellcheck
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+            | tar -xJ --strip-components=1 -C "$HOME/.local/bin" shellcheck-v0.11.0/shellcheck
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Run Rector (dry-run)
-        run: composer rector
+      - name: Check shellcheck version
+        run: shellcheck --version
 
-      - name: Run PHPStan
-        run: composer phpstan
+      - name: Install hadolint
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL -o "$HOME/.local/bin/hadolint" https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x "$HOME/.local/bin/hadolint"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Check hadolint version
+        run: hadolint --version
+
+      - name: Lint
+        run: bin/lint.sh
 
   unit-tests:
     name: Unit Tests (PHP ${{ matrix.php }})
