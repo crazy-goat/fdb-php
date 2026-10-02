@@ -21,6 +21,13 @@
 ### Fixed
 - [#119] Makefile targets `fdb-status` and `fdb-cli` use the existing `fdb-config`
   service instead of the missing `fdb` service.
+- [#126] The nightly `Binding tester` workflow waits for `The database is available` (the old
+  `grep available` also matched `unavailable`), retries `configure tenant_mode=optional_experimental`
+  until it succeeds instead of hiding the failure with `|| true`, reports the real elapsed time and
+  fails the job after 120 s. It also installs the Composer dependencies in the `php` container,
+  which the suites need (`vendor/autoload.php` was missing), and `composer.json` maps the
+  `Tests\BindingTester` namespace to `tests/bindingtester/` (the directory name is lowercase, so
+  the classes were not found on case-sensitive file systems).
 
 ## [1.1.0] - 2026-09-09
 

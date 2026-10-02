@@ -23,15 +23,34 @@ jobs:
           docker compose up -d --build fdb-coord-1 fdb-coord-2 fdb-coord-3 fdb-server-1 fdb-server-2 fdb-config php
 
           echo "Waiting for FDB cluster..."
-          for i in $(seq 1 60); do
-            if docker compose exec -T fdb-config fdbcli --exec "status minimal" 2>/dev/null | grep -q "available"; then
-              echo "FDB cluster is ready after ${i}s"
-              break
+          start=$SECONDS
+          # "unavailable" contains "available", so match the whole sentence.
+          until docker compose exec -T fdb-config fdbcli --exec "status minimal" 2>/dev/null | grep -q "The database is available"; do
+            if (( SECONDS - start >= 120 )); then
+              echo "FDB cluster did not become available within 120s" >&2
+              exit 1
             fi
             sleep 2
           done
+          echo "FDB cluster is available after $((SECONDS - start))s"
 
-          docker compose exec -T fdb-config fdbcli --exec "configure tenant_mode=optional_experimental" || true
+          # The cluster can report "available" before every process has joined, and
+          # configure then fails with "Not enough processes exist", so retry it.
+          echo "Configuring tenant mode..."
+          start=$SECONDS
+          until out=$(docker compose exec -T fdb-config fdbcli --exec "configure tenant_mode=optional_experimental" 2>&1) \
+            && grep -q "Configuration changed" <<< "$out"; do
+            echo "$out"
+            if (( SECONDS - start >= 120 )); then
+              echo "Could not configure tenant mode within 120s" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Tenant mode configured after $((SECONDS - start))s"
+
+      - name: Install Composer dependencies
+        run: docker compose exec -T php composer install --no-interaction --prefer-dist
 
       - name: Run binding tester suite (${{ matrix.suite }})
         run: |
