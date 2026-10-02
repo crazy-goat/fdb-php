@@ -39,7 +39,8 @@ jobs:
             const actor = context.actor;
             const owner = context.repo.owner;
 
-            if (actor === owner) {
+            // Dependabot is trusted: its PRs are created by the repository configuration.
+            if (actor === owner || actor === 'dependabot[bot]') {
               core.setOutput('allowed', 'true');
               return;
             }
