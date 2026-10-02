@@ -24,11 +24,11 @@ test-integration: ## Run integration tests only
 bindingtester: ## Run upstream binding tester suites (default: tuple api directory; override with SUITES="tuple")
 	docker compose exec php bash tests/bindingtester/run.sh $(SUITES)
 
-lint: ## Run all linters (phpcs + rector dry-run + phpstan)
-	docker compose exec php composer lint
+lint: ## Run all linters on the host via bin/lint.sh (phpcs, rector, phpstan, shellcheck)
+	bin/lint.sh
 
-lint-fix: ## Fix lint issues (rector + phpcbf)
-	docker compose exec php composer lint:fix
+lint-fix: ## Fix lint issues, then check (bin/lint.sh --fix)
+	bin/lint.sh --fix
 
 stan: ## Run PHPStan
 	docker compose exec php composer phpstan

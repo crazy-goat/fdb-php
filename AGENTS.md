@@ -29,9 +29,9 @@ for anything that opens a database. CI runs PHP 8.2, 8.3 and 8.4.
 ```bash
 composer install
 
-# Lint: PHPCS + Rector (dry run) + PHPStan (level 9)
-composer lint
-composer lint:fix        # Rector (apply) + PHPCBF
+# Lint: PHPCS + Rector (dry run) + PHPStan (level 9) + shellcheck; check only
+bin/lint.sh              # same as composer lint and make lint
+bin/lint.sh --fix        # Rector (apply) + PHPCBF, then check (composer lint:fix, make lint-fix)
 composer cs              # PHPCS only
 composer cs-fix          # PHPCBF only
 composer phpstan         # PHPStan only
@@ -44,14 +44,16 @@ composer test:unit       # Unit suite, no FoundationDB needed
 composer test:integration  # Integration suite, needs a cluster (see below)
 ```
 
-Run `composer lint:fix` and then `composer lint` before committing. Fix by hand what cannot be
-auto-fixed. Push only when `composer lint` and `composer test` pass (in a worktree: `make lint`
-and `make test`, see below).
+Run `bin/lint.sh --fix` and then `bin/lint.sh` before committing. Fix by hand what cannot be
+auto-fixed. Push only when `bin/lint.sh` and `composer test` pass (in a worktree: `bin/lint.sh`
+on the host and `make test`, see below). `bin/lint.sh` runs on the host, not in the php
+container; it needs `shellcheck` and `vendor/` from `composer install`.
 
 ## FoundationDB and Docker
 
 - `make` targets wrap `docker compose exec php ...`: `make up`, `make down`, `make test`,
-  `make test-unit`, `make test-integration`, `make lint`, `make bindingtester`, `make help`.
+  `make test-unit`, `make test-integration`, `make bindingtester`, `make help`. `make lint` is the exception: it
+  runs `bin/lint.sh` on the host.
 - Start the cluster with `docker compose up -d` (3 coordinators, 2 storage servers, `fdb-config`
   and `php`). Run the integration suite inside the php container:
   `docker compose exec php vendor/bin/phpunit --testsuite=Integration`. Stop with
@@ -66,8 +68,8 @@ and `make test`, see below).
 - **Worktrees:** the published ports in `.env.worktree` are non-default, and the host cannot use
   them. FoundationDB requires the port a client dials to equal the address the coordinator
   advertises (4500-4502), otherwise the client aborts. So in a worktree: load `.env.worktree`,
-  run `docker compose up -d`, and run everything inside the php container: `make test`,
-  `make test-integration`, `make lint`, or `docker compose exec php ...`. Host-side
+  run `docker compose up -d`, and run tests inside the php container: `make test`,
+  `make test-integration`, or `docker compose exec php ...`. Host-side
   `composer test:integration` with a `127.0.0.1:4500-4502` cluster file works only with the
   default ports (the main checkout and CI).
 - CI (`e2e-tests`) starts the cluster with the default ports, writes a host-side cluster file
@@ -112,7 +114,7 @@ GitHub Release when a `v*` tag is pushed.
 ## Common lint issues
 
 - **PHPCS, multi-line function declaration** ("The closing parenthesis and the opening brace
-  ... must be on the same line"): run `composer lint:fix`, or fix the formatting by hand.
+  ... must be on the same line"): run `bin/lint.sh --fix`, or fix the formatting by hand.
 - **Rector, unused parameters:** Rector may remove parameters from methods that are not
   implemented yet. If the method will be implemented later, the parameters must stay.
 - **PHPStan, property only written:** if a property is only written and never read, PHPStan

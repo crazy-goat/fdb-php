@@ -63,7 +63,7 @@ jobs:
             }
 
   lint:
-    name: Lint (PHPCS + Rector + PHPStan)
+    name: Lint
     needs: [changes, check-actor]
     if: needs.changes.outputs.code == 'true' && needs.check-actor.outputs.allowed == 'true'
     runs-on: ubuntu-latest
@@ -85,14 +85,11 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Run PHPCS
-        run: composer cs
+      - name: Check shellcheck
+        run: shellcheck --version
 
-      - name: Run Rector (dry-run)
-        run: composer rector
-
-      - name: Run PHPStan
-        run: composer phpstan
+      - name: Lint
+        run: bin/lint.sh
 
   unit-tests:
     name: Unit Tests (PHP ${{ matrix.php }})
