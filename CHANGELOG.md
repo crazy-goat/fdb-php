@@ -3,19 +3,23 @@
 ## [Unreleased]
 
 ### Added
-- Development process documentation: `docs/workflow.md` (issue, worktree, review, PR,
+- [#119] Development process documentation: `docs/workflow.md` (issue, worktree, review, PR,
   merge) and `docs/release-workflow.md`, `AGENTS.md` with the project commands (`CLAUDE.md`
   now only imports it), worktree scripts under `bin/`, issue forms, a pull request template and
   Dependabot configuration for Composer and GitHub Actions.
-- `release.yml` workflow: pushing a `v*` tag creates the GitHub Release with the notes taken
+- [#119] `release.yml` workflow: pushing a `v*` tag creates the GitHub Release with the notes taken
   from the matching `CHANGELOG.md` section.
 
 ### Changed
-- CI: documentation-only pull requests run only the fast docs checks; the `ci-ok` job
+- [#119] CI: documentation-only pull requests run only the fast docs checks; the `ci-ok` job
   aggregates the results. CI now also runs on pushes to `master` and no longer on tags.
-- `docker-compose.yml`: host ports are variables with the old defaults (`FDB_COORD_1_PORT`
+- [#119] `docker-compose.yml`: host ports are variables with the old defaults (`FDB_COORD_1_PORT`
   4500, `FDB_COORD_2_PORT` 4501, `FDB_COORD_3_PORT` 4502, `FDB_SERVER_1_PORT` 4510,
   `FDB_SERVER_2_PORT` 4511), so that several worktrees can run side by side.
+
+### Fixed
+- [#119] Makefile targets `fdb-status` and `fdb-cli` use the existing `fdb-config`
+  service instead of the missing `fdb` service.
 
 ## [1.1.0] - 2026-09-09
 
