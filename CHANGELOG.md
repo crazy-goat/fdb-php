@@ -28,6 +28,10 @@
   which the suites need (`vendor/autoload.php` was missing), and `composer.json` maps the
   `Tests\BindingTester` namespace to `tests/bindingtester/` (the directory name is lowercase, so
   the classes were not found on case-sensitive file systems).
+- [#132] CI `e2e-tests` job: the cluster wait loop matches `The database is available` (the old
+  `grep available` also matched `unavailable`) and fails the job after 120 s, and the
+  `configure tenant_mode=optional_experimental` step is retried until it prints
+  `Configuration changed` (fails after 120 s).
 
 ## [1.1.0] - 2026-09-09
 
