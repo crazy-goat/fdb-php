@@ -190,12 +190,12 @@ jobs:
           # Container name may vary, so we use docker-compose to find it
           SERVER1_CONTAINER=$(docker-compose ps -q fdb-server-1)
           if [ -n "$SERVER1_CONTAINER" ]; then
-            SERVER1_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $SERVER1_CONTAINER)
-            echo "FDB_REBOOT_TEST_IP=${SERVER1_IP}:4510" >> $GITHUB_ENV
+            SERVER1_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$SERVER1_CONTAINER")
+            echo "FDB_REBOOT_TEST_IP=${SERVER1_IP}:4510" >> "$GITHUB_ENV"
             echo "fdb-server-1 IP: ${SERVER1_IP}:4510"
           else
             echo "Warning: Could not find fdb-server-1 container"
-            echo "FDB_REBOOT_TEST_IP=172.18.0.5:4510" >> $GITHUB_ENV
+            echo "FDB_REBOOT_TEST_IP=172.18.0.5:4510" >> "$GITHUB_ENV"
           fi
 
       - name: Configure tenant mode

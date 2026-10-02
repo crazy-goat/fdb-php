@@ -31,7 +31,8 @@
 - [#132] CI `e2e-tests` job: the cluster wait loop matches `The database is available` (the old
   `grep available` also matched `unavailable`) and fails the job after 120 s, and the
   `configure tenant_mode=optional_experimental` step is retried until it prints
-  `Configuration changed` (fails after 120 s).
+  `Configuration changed` (fails after 120 s). The "Create cluster file" step quotes its
+  variables, so `actionlint` is clean.
 
 ## [1.1.0] - 2026-09-09
 
