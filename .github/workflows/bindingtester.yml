@@ -49,6 +49,9 @@ jobs:
           done
           echo "Tenant mode configured after $((SECONDS - start))s"
 
+      - name: Install Composer dependencies
+        run: docker compose exec -T php composer install --no-interaction --prefer-dist
+
       - name: Run binding tester suite (${{ matrix.suite }})
         run: |
           docker compose exec -T php bash tests/bindingtester/run.sh "${{ matrix.suite }}"

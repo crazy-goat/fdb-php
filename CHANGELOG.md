@@ -24,7 +24,8 @@
 - [#126] The nightly `Binding tester` workflow waits for `The database is available` (the old
   `grep available` also matched `unavailable`), retries `configure tenant_mode=optional_experimental`
   until it succeeds instead of hiding the failure with `|| true`, reports the real elapsed time and
-  fails the job after 120 s.
+  fails the job after 120 s. It also installs the Composer dependencies in the `php` container,
+  which the suites need (`vendor/autoload.php` was missing).
 
 ## [1.1.0] - 2026-09-09
 
