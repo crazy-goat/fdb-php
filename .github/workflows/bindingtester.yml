@@ -16,7 +16,7 @@ jobs:
         suite: ["tuple", "api", "directory"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Start 5-node FDB cluster
         run: |
