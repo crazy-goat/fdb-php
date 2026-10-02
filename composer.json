@@ -17,7 +17,7 @@
         "phpunit/phpunit": "^11.0",
         "rector/rector": "2.6.3",
         "slevomat/coding-standard": "^8.15",
-        "squizlabs/php_codesniffer": "^3.9"
+        "squizlabs/php_codesniffer": "^3.9 || ^4.0"
     },
     "suggest": {
         "ext-ffi": "Required for the native FoundationDB client bindings",
