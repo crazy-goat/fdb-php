@@ -7,3 +7,7 @@ fdb.cluster
 # Python bytecode from the vendored bindingtester harness
 __pycache__/
 *.pyc
+
+/findings.md
+/review.md
+/.env.worktree

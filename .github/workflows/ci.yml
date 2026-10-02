@@ -2,12 +2,29 @@ name: CI
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [master]
   pull_request:
-    branches: ["master"]
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Changes
+    uses: crazy-goat/.github/.github/workflows/changes.yml@main
+    with:
+      # No test reads Markdown files, so documentation-only changes skip the heavy jobs.
+      docs-regex: '^(.*\.md|docs/.*|LICENSE.*|\.github/ISSUE_TEMPLATE/.*|\.github/pull_request_template\.md|\.gitignore)$'
+
+  docs:
+    name: Docs
+    uses: crazy-goat/.github/.github/workflows/docs-check.yml@main
+
   check-actor:
     name: Check actor permissions
     runs-on: ubuntu-latest
@@ -22,7 +39,8 @@ jobs:
             const actor = context.actor;
             const owner = context.repo.owner;
 
-            if (actor === owner) {
+            // Dependabot is trusted: its PRs are created by the repository configuration.
+            if (actor === owner || actor === 'dependabot[bot]') {
               core.setOutput('allowed', 'true');
               return;
             }
@@ -46,8 +64,8 @@ jobs:
 
   lint:
     name: Lint (PHPCS + Rector + PHPStan)
-    needs: check-actor
-    if: needs.check-actor.outputs.allowed == 'true'
+    needs: [changes, check-actor]
+    if: needs.changes.outputs.code == 'true' && needs.check-actor.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,8 +96,8 @@ jobs:
 
   unit-tests:
     name: Unit Tests (PHP ${{ matrix.php }})
-    needs: [check-actor, lint]
-    if: needs.check-actor.outputs.allowed == 'true'
+    needs: [changes, check-actor, lint]
+    if: needs.changes.outputs.code == 'true' && needs.check-actor.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -102,8 +120,8 @@ jobs:
 
   e2e-tests:
     name: E2E Tests (5-node FDB cluster)
-    needs: [check-actor, lint]
-    if: needs.check-actor.outputs.allowed == 'true'
+    needs: [changes, check-actor, lint]
+    if: needs.changes.outputs.code == 'true' && needs.check-actor.outputs.allowed == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -176,3 +194,27 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker-compose down -v
+
+  ci-ok:
+    name: ci-ok
+    needs: [changes, docs, check-actor, lint, unit-tests, e2e-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Code changes: $CODE"
+          echo "Results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in failure|cancelled) exit 1 ;; esac
+          done
+          # Documentation-only changes skip the heavy jobs; code changes need all of them.
+          # A skipped job (for example when check-actor denies the actor) is not a pass.
+          if [ "$CODE" = "true" ]; then
+            for r in $RESULTS; do
+              [ "$r" = "success" ] || exit 1
+            done
+          fi

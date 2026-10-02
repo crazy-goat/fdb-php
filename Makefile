@@ -49,10 +49,10 @@ composer-install: ## Install composer dependencies
 	docker compose exec php composer install
 
 fdb-status: ## Show FDB cluster status
-	docker compose exec fdb fdbcli --exec "status details"
+	docker compose exec fdb-config fdbcli --exec "status details"
 
 fdb-cli: ## Open FDB CLI
-	docker compose exec fdb fdbcli
+	docker compose exec fdb-config fdbcli
 
 verify: ## Verify PHP can connect to FDB via FFI
 	docker compose exec php php docker/php/verify-ffi.php
