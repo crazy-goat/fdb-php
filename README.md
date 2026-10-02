@@ -383,6 +383,8 @@ FoundationDB (entry point)
 
 ## Development
 
+The development process and the project commands are described in [AGENTS.md](AGENTS.md) and [docs/workflow.md](docs/workflow.md).
+
 ### Prerequisites
 
 - PHP 8.2+ with `ext-ffi`
