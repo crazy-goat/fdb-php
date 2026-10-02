@@ -39,7 +39,7 @@ jobs:
           echo "Configuring tenant mode..."
           start=$SECONDS
           until out=$(docker compose exec -T fdb-config fdbcli --exec "configure tenant_mode=optional_experimental" 2>&1) \
-            && grep -q "Database configured" <<< "$out"; do
+            && grep -q "Configuration changed" <<< "$out"; do
             echo "$out"
             if (( SECONDS - start >= 120 )); then
               echo "Could not configure tenant mode within 120s" >&2
