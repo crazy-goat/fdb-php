@@ -45,7 +45,8 @@ composer test:integration  # Integration suite, needs a cluster (see below)
 ```
 
 Run `composer lint:fix` and then `composer lint` before committing. Fix by hand what cannot be
-auto-fixed. Push only when `composer lint` and `composer test` pass.
+auto-fixed. Push only when `composer lint` and `composer test` pass (in a worktree: `make lint`
+and `make test`, see below).
 
 ## FoundationDB and Docker
 
@@ -62,6 +63,13 @@ auto-fixed. Push only when `composer lint` and `composer test` pass.
   `bin/worktree.sh` writes free ports to `.env.worktree`; load it with
   `set -a && . ./.env.worktree && set +a`. `bin/worktree-teardown.sh` stops the stack of the
   worktree. `bin/worktree-setup.sh` only runs `composer install`; it does not start FoundationDB.
+- **Worktrees:** the published ports in `.env.worktree` are non-default, and the host cannot use
+  them. FoundationDB requires the port a client dials to equal the address the coordinator
+  advertises (4500-4502), otherwise the client aborts. So in a worktree: load `.env.worktree`,
+  run `docker compose up -d`, and run everything inside the php container: `make test`,
+  `make test-integration`, `make lint`, or `docker compose exec php ...`. Host-side
+  `composer test:integration` with a `127.0.0.1:4500-4502` cluster file works only with the
+  default ports (the main checkout and CI).
 - CI (`e2e-tests`) starts the cluster with the default ports, writes a host-side cluster file
   with `127.0.0.1:4500-4502` and sets `FDB_REBOOT_TEST_IP` to the container address of
   `fdb-server-1`.
@@ -73,7 +81,8 @@ auto-fixed. Push only when `composer lint` and `composer test` pass.
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master`. The `changes` job
 detects documentation-only changes and the `docs` job checks them fast. `check-actor`, `lint`,
-`unit-tests` and `e2e-tests` run only for code changes by owners and collaborators. `ci-ok`
+`unit-tests` and `e2e-tests` run only for code changes by owners, collaborators and
+`dependabot[bot]`. `ci-ok`
 aggregates the results and is the required check. `.github/workflows/release.yml` creates the
 GitHub Release when a `v*` tag is pushed.
 
