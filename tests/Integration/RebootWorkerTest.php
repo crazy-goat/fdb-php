@@ -113,9 +113,7 @@ final class RebootWorkerTest extends TestCase
         }
 
         // Fallback to environment variable or default
-        if ($storageAddress === null) {
-            $storageAddress = getenv('FDB_REBOOT_TEST_IP') ?: '172.19.0.5:4510';
-        }
+        $storageAddress ??= getenv('FDB_REBOOT_TEST_IP') ?: '172.19.0.5:4510';
 
         // Store test data before reboot
         $testKey = 'test/reboot/' . uniqid();
