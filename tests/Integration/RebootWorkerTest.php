@@ -82,7 +82,6 @@ final class RebootWorkerTest extends TestCase
                             if (!is_array($proc)) {
                                 continue;
                             }
-                            /** @var mixed $roles */
                             $roles = $proc['roles'] ?? [];
                             if (!is_array($roles)) {
                                 continue;
