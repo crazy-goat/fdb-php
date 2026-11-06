@@ -34,6 +34,13 @@
   (repository setting), which makes the actor check unnecessary.
 
 ### Fixed
+- [#139] `docker-compose.yml`: the `fdb-config` job retries the initial cluster configuration,
+  waits for `The database is available` and fails after 120 s instead of silently continuing,
+  and configures `tenant_mode=optional_experimental` (retried until `Configuration changed`,
+  failing after 120 s), so the developer stack runs the tenant and blob-granule integration
+  tests like CI. The job writes a sentinel after tenant mode is configured and exposes a
+  healthcheck that requires it, and the `php` service waits for that healthcheck, so `make test`
+  no longer races the cluster setup.
 - [#150] Composer dependency resolution targets PHP 8.2.0 (`config.platform`), so a
   worktree installed on a PHP 8.4+ host produces a `vendor/` tree that also runs in the
   PHP 8.2 `php` container.
