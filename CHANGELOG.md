@@ -12,6 +12,10 @@
   from the matching `CHANGELOG.md` section.
 
 ### Changed
+- [#147] `bin/lint.sh` runs `actionlint` 1.7.7 over `.github/workflows/*.yml`, including
+  shellcheck inside `run:` blocks, so workflow defects are caught before a push. The preflight
+  names the CI version and install command, the CI `lint` job installs the pinned release, and
+  `AGENTS.md`, `README.md` and `make help` name the tool.
 - [#144] `bin/lint.sh` checks for `shellcheck` 0.11.0 and `hadolint` 2.12.0 before running
   any check and fails with the release link and the CI install command when a tool is missing
   or older; `AGENTS.md` and `README.md` name both tools and versions, and `make help`

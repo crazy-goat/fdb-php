@@ -29,7 +29,7 @@ for anything that opens a database. CI runs PHP 8.2, 8.3 and 8.4.
 ```bash
 composer install
 
-# Lint: PHP-CS-Fixer + Rector (dry run) + PHPStan (level 9) + shellcheck 0.11.0 + hadolint 2.12.0; check only
+# Lint: PHP-CS-Fixer + Rector (dry run) + PHPStan (level 9) + shellcheck 0.11.0 + hadolint 2.12.0 + actionlint 1.7.7; check only
 bin/lint.sh              # same as composer lint and make lint
 bin/lint.sh --fix        # Rector (apply) + PHP-CS-Fixer (apply), then check (composer lint:fix, make lint-fix)
 composer cs              # PHP-CS-Fixer only (dry run)
@@ -47,7 +47,7 @@ composer test:integration  # Integration suite, needs a cluster (see below)
 Run `bin/lint.sh --fix` and then `bin/lint.sh` before committing. Fix by hand what cannot be
 auto-fixed. Push only when `bin/lint.sh` and `composer test` pass (in a worktree: `bin/lint.sh`
 on the host and `make test`, see below). `bin/lint.sh` runs on the host, not in the php
-container; it needs `shellcheck` 0.11.0, `hadolint` 2.12.0 and `vendor/` from
+container; it needs `shellcheck` 0.11.0, `hadolint` 2.12.0, `actionlint` 1.7.7 and `vendor/` from
 `composer install`. A missing or older tool fails the preflight in `bin/lint.sh` with the
 install command for the CI version.
 
