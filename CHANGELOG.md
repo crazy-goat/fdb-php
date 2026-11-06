@@ -38,6 +38,9 @@
   (repository setting), which makes the actor check unnecessary.
 
 ### Fixed
+- [#145] `bin/worktree-done.sh` replaces the `A && B || C` one-liner with an explicit `if`, so
+  shellcheck 0.10 (shipped by some distributions) no longer reports SC2015; the shared
+  `crazy-goat/.github` standard is fixed in the same way.
 - [#138] `make test`, `make test-unit` and `make test-integration` call `vendor/bin/phpunit`
   directly instead of going through Composer, so the 300 s default `process-timeout` no longer
   kills the suite before it finishes. `composer test`, `composer test:unit` and
