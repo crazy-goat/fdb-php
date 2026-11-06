@@ -18,10 +18,35 @@ use PHPUnit\Framework\TestCase;
  */
 final class NativeClientLibraryPathTest extends TestCase
 {
+    /** @var string|false Ambient value saved by setUp() so tearDown() can restore it. */
+    private string|false $ambientLibraryPath;
+
+    protected function setUp(): void
+    {
+        $this->ambientLibraryPath = getenv(NativeClient::LIBRARY_PATH_ENV);
+        parent::setUp();
+    }
+
     protected function tearDown(): void
     {
-        putenv(NativeClient::LIBRARY_PATH_ENV);
+        self::restoreLibraryPathEnv($this->ambientLibraryPath);
         NativeClient::resetInstance();
+    }
+
+    /**
+     * Restores the ambient FDB_LIBRARY_PATH instead of unsetting it, so a run
+     * like `FDB_LIBRARY_PATH=/opt/fdb/lib/libfdb_c.so composer test` keeps the
+     * pin for later suites (for example Integration) in the same process.
+     *
+     * @internal
+     */
+    public static function restoreLibraryPathEnv(string|false $saved): void
+    {
+        if ($saved === false) {
+            putenv(NativeClient::LIBRARY_PATH_ENV);
+        } else {
+            putenv(NativeClient::LIBRARY_PATH_ENV . '=' . $saved);
+        }
     }
 
     #[Test]
@@ -29,7 +54,7 @@ final class NativeClientLibraryPathTest extends TestCase
     {
         putenv(NativeClient::LIBRARY_PATH_ENV);
 
-        self::assertSame('libfdb_c.so', NativeClient::resolveLibraryPath());
+        self::assertSame(NativeClient::defaultLibraryName(), NativeClient::resolveLibraryPath());
     }
 
     #[Test]
@@ -56,7 +81,7 @@ final class NativeClientLibraryPathTest extends TestCase
     {
         putenv(NativeClient::LIBRARY_PATH_ENV . '=');
 
-        self::assertSame('libfdb_c.so', NativeClient::resolveLibraryPath());
+        self::assertSame(NativeClient::defaultLibraryName(), NativeClient::resolveLibraryPath());
     }
 
     #[Test]
@@ -64,7 +89,7 @@ final class NativeClientLibraryPathTest extends TestCase
     {
         putenv(NativeClient::LIBRARY_PATH_ENV);
 
-        self::assertSame('libfdb_c.so', NativeClient::resolveLibraryPath(''));
+        self::assertSame(NativeClient::defaultLibraryName(), NativeClient::resolveLibraryPath(''));
     }
 
     #[Test]
@@ -87,6 +112,25 @@ final class NativeClientLibraryPathTest extends TestCase
     }
 
     /**
+     * Verifies the teardown contract through the helper tearDown() uses: a
+     * test may overwrite or unset FDB_LIBRARY_PATH, and the value saved by
+     * setUp() must come back. Testing the helper directly avoids invoking
+     * tearDown() twice (manually and from PHPUnit).
+     */
+    #[Test]
+    public function restoreLibraryPathEnvRestoresTheSavedValue(): void
+    {
+        $saved = '/opt/fdb/lib/libfdb_c.so';
+
+        putenv(NativeClient::LIBRARY_PATH_ENV . '=' . $saved);
+        self::restoreLibraryPathEnv(false);
+        self::assertFalse(getenv(NativeClient::LIBRARY_PATH_ENV));
+
+        self::restoreLibraryPathEnv($saved);
+        self::assertSame($saved, getenv(NativeClient::LIBRARY_PATH_ENV));
+    }
+
+    /**
      * Functional check: when a pinned path is configured, that exact path is
      * the one used for FFI::cdef(). Environment-dependent: skipped when no
      * real libfdb_c is installed, because unit tests must not require
@@ -102,7 +146,7 @@ final class NativeClientLibraryPathTest extends TestCase
         $realPath = $this->findRealLibraryPath();
 
         if ($realPath === null) {
-            self::markTestSkipped('libfdb_c.so is not installed on this machine');
+            self::markTestSkipped('libfdb_c is not installed on this machine');
         }
 
         putenv(NativeClient::LIBRARY_PATH_ENV . '=' . $realPath);
@@ -122,11 +166,24 @@ final class NativeClientLibraryPathTest extends TestCase
 
     /**
      * Locates a real libfdb_c on this machine, or returns null. Tries the
-     * environment first, then the common Linux install locations.
+     * FDB_LIBRARY_PATH environment variable first, then the common macOS
+     * (Homebrew/pkg) and Linux install locations.
      */
     private function findRealLibraryPath(): ?string
     {
+        $configured = getenv(NativeClient::LIBRARY_PATH_ENV);
+        if (is_string($configured) && $configured !== '' && is_file($configured)) {
+            return $configured;
+        }
+
         $candidates = [
+            // macOS: Apple silicon Homebrew, Intel Homebrew, pkg installer.
+            '/opt/homebrew/lib/libfdb_c.dylib',
+            '/usr/local/lib/libfdb_c.dylib',
+            '/usr/lib/libfdb_c.dylib',
+            // Linux: distro and local installs, 32/64-bit layouts.
+            '/usr/local/lib64/libfdb_c.so',
+            '/usr/lib64/libfdb_c.so',
             '/usr/lib/x86_64-linux-gnu/libfdb_c.so',
             '/usr/lib/aarch64-linux-gnu/libfdb_c.so',
             '/usr/local/lib/libfdb_c.so',

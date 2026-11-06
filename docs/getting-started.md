@@ -9,12 +9,14 @@ Before you begin, ensure you have the following:
 - **PHP 8.2+** with the `ext-ffi` extension enabled
 - **ext-gmp** (optional, but recommended for arbitrary-precision integers in the tuple layer)
 - **FoundationDB server** (for running operations)
-- **libfdb_c.so** (FoundationDB C client library)
+- **libfdb_c** (FoundationDB C client library: `libfdb_c.so` on Linux,
+  `libfdb_c.dylib` on macOS)
 
 > **Security note:** by default the library is loaded by bare soname, which is
 > resolved through the dynamic linker search path. In production, pin the
 > absolute path of the library with the `FDB_LIBRARY_PATH` environment
-> variable (e.g. `FDB_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/libfdb_c.so`)
+> variable (e.g. `FDB_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/libfdb_c.so` on
+> Linux or `FDB_LIBRARY_PATH=/usr/local/lib/libfdb_c.dylib` on macOS)
 > to prevent library search-path hijacking. See the README for details.
 
 ## Installing FoundationDB
@@ -39,7 +41,13 @@ sudo dpkg -i foundationdb-server_7.3.75-1_amd64.deb
 
 ### macOS
 
-Download the `.pkg` installer from the [FoundationDB releases page](https://github.com/apple/foundationdb/releases) and run it.
+Download the `.pkg` installer from the [FoundationDB releases page](https://github.com/apple/foundationdb/releases) and run it. The client library is installed as `libfdb_c.dylib`; the client loads that soname by default. To pin the exact library, point `FDB_LIBRARY_PATH` at the absolute path, for example:
+
+```bash
+export FDB_LIBRARY_PATH=/usr/local/lib/libfdb_c.dylib
+```
+
+The pthread and dl symbols used by the network thread come from `libSystem` on macOS, so no separate `libpthread`/`libdl` library is required.
 
 ### Docker
 

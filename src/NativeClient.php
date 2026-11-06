@@ -373,19 +373,32 @@ final class NativeClient
 
     private const RTLD_LAZY = 1;
 
+    private const LINUX_PTHREAD_LIBRARY = 'libpthread.so.0';
+
+    private const LINUX_DL_LIBRARY = 'libdl.so.2';
+
+    /**
+     * On macOS both pthread and dl symbols are exported by libSystem; there is
+     * no separate libpthread/libdl. libSystem.B.dylib is the stable compat
+     * symlink that dyld resolves on every supported macOS release.
+     */
+    private const DARWIN_SYSTEM_LIBRARY = 'libSystem.B.dylib';
+
     private static ?self $instance = null;
 
     /**
      * Environment variable that can pin the absolute path of the FoundationDB
      * client library loaded through FFI. When set, it takes precedence over
-     * the bare soname ("libfdb_c.so"), which is resolved through the dynamic
-     * linker search path and is therefore subject to library hijacking
-     * (see issue #49).
+     * the platform's bare soname ("libfdb_c.so" on Linux, "libfdb_c.dylib" on
+     * macOS), which is resolved through the dynamic linker search path and is
+     * therefore subject to library hijacking (see issue #49).
      */
     public const LIBRARY_PATH_ENV = 'FDB_LIBRARY_PATH';
 
     /** Bare soname used when no explicit path is configured. */
-    private const DEFAULT_LIBRARY = 'libfdb_c.so';
+    private const DEFAULT_LIBRARY_LINUX = 'libfdb_c.so';
+
+    private const DEFAULT_LIBRARY_DARWIN = 'libfdb_c.dylib';
 
     public readonly FFI $fdb;
 
@@ -436,17 +449,71 @@ final class NativeClient
     {
         $this->fdbLibraryPath = self::resolveLibraryPath($fdbLibraryPath);
         $this->fdb = FFI::cdef(self::FDB_HEADER, $this->fdbLibraryPath);
-        $this->pthread = FFI::cdef(self::PTHREAD_HEADER, 'libpthread.so.0');
-        $this->libdl = FFI::cdef(self::LIBDL_HEADER, 'libdl.so.2');
+        $libraries = self::nativeLibraries();
+        $this->pthread = FFI::cdef(self::PTHREAD_HEADER, $libraries['pthread']);
+        $this->libdl = FFI::cdef(self::LIBDL_HEADER, $libraries['dl']);
+    }
+
+    /**
+     * Libraries that export the pthread and dl symbols used by the network
+     * thread handling. Kept separate from the constructor so the platform
+     * mapping can be unit-tested without the host actually being macOS.
+     *
+     * @return array{pthread: string, dl: string}
+     *
+     * @throws \RuntimeException on a platform where the symbols are not known
+     *                           to be available
+     *
+     * @internal
+     */
+    public static function nativeLibraries(?string $osFamily = null): array
+    {
+        return match ($osFamily ?? PHP_OS_FAMILY) {
+            'Darwin' => [
+                'pthread' => self::DARWIN_SYSTEM_LIBRARY,
+                'dl' => self::DARWIN_SYSTEM_LIBRARY,
+            ],
+            'Linux' => [
+                'pthread' => self::LINUX_PTHREAD_LIBRARY,
+                'dl' => self::LINUX_DL_LIBRARY,
+            ],
+            default => throw self::unsupportedOsFamily($osFamily ?? PHP_OS_FAMILY),
+        };
+    }
+
+    /**
+     * Bare soname used when no explicit library path is configured. macOS
+     * client packages install a .dylib, Linux packages a .so.
+     *
+     * @internal
+     *
+     * @throws \RuntimeException on an OS family that nativeLibraries() rejects
+     */
+    public static function defaultLibraryName(?string $osFamily = null): string
+    {
+        return match ($osFamily ?? PHP_OS_FAMILY) {
+            'Darwin' => self::DEFAULT_LIBRARY_DARWIN,
+            'Linux' => self::DEFAULT_LIBRARY_LINUX,
+            default => throw self::unsupportedOsFamily($osFamily ?? PHP_OS_FAMILY),
+        };
+    }
+
+    private static function unsupportedOsFamily(string $osFamily): \RuntimeException
+    {
+        return new \RuntimeException(sprintf(
+            'The native client supports Linux and macOS; unsupported OS family "%s"',
+            $osFamily,
+        ));
     }
 
     /**
      * Resolves the library to load for FFI::cdef()/dlopen().
      *
      * Precedence: explicit argument > FDB_LIBRARY_PATH environment variable
-     * > the bare soname ("libfdb_c.so"). An explicitly configured value must
-     * be an absolute path: loading by relative path would still traverse
-     * attacker-influenced directories, defeating the purpose of pinning.
+     * > the platform's bare soname ("libfdb_c.so" on Linux, "libfdb_c.dylib"
+     * on macOS). An explicitly configured value must be an absolute path:
+     * loading by relative path would still traverse attacker-influenced
+     * directories, defeating the purpose of pinning.
      *
      * @throws \InvalidArgumentException when a configured path is not absolute
      */
@@ -455,7 +522,7 @@ final class NativeClient
         $path = $configured ?? getenv(self::LIBRARY_PATH_ENV);
 
         if ($path === false || $path === '') {
-            return self::DEFAULT_LIBRARY;
+            return self::defaultLibraryName();
         }
 
         if (!str_starts_with($path, '/')) {
