@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- [#164] PHPStan analyses for the PHP 8.2 package floor (`phpVersion: 80200`) instead of
+  8.4, so functions added in PHP 8.3/8.4 are no longer accepted by analysis. The 73
+  false positives from the PHP <= 8.3 FFI reflection stubs are recorded in
+  `phpstan-baseline.neon` with an explanation next to `phpstan.neon`; the wrappers get
+  no null handling because `FFI::new()`, `FFI::cast()` and `FFI::type()` never return
+  null. The CI unit matrix installs `libfdb_c` for every PHP version, so the real-library
+  test also runs on 8.2.
+
 ### Fixed
 - [#161] The `php` compose service runs as the host user (`HOST_UID:HOST_GID`, default
   `1000:1000`, `HOME=/tmp`), so `.php-cs-fixer.cache`, `.phpunit.cache`, `composer.lock`

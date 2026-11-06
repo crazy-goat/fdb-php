@@ -1,9 +1,18 @@
+includes:
+    # The PHP <= 8.3 stubs declare FFI::new(), FFI::cast() and FFI::type() as nullable
+    # (?FFI\CData / ?FFI\CType) in their reflection stubs, while the functions
+    # never return null. php-src corrected the prototypes in PHP 8.4 (commit
+    # a37a3d3d81, php-src #16075), so analysing at the PHP 8.2 floor reports
+    # those calls as possibly null. The baseline contains only these stub false
+    # positives; do not add null handling to the FFI wrappers to silence them,
+    # the implementation cannot return null. Regenerate the baseline after
+    # changing the FFI call sites.
+    - phpstan-baseline.neon
+
 parameters:
-    # Composer resolves dependencies for PHP 8.2 (config.platform.php), which would
-    # also make PHPStan analyse for 8.2. The lint job runs on PHP 8.2, but lowering
-    # this target to 8.2 reports 75 false positives from the PHP <= 8.3 FFI stubs;
-    # keep 8.4 until those are baselined.
-    phpVersion: 80400
+    # The package floor is PHP 8.2 (composer.json `php: >=8.2`,
+    # config.platform.php 8.2.0), so analysis must target 8.2 too.
+    phpVersion: 80200
     level: 9
     paths:
         - src
@@ -24,11 +33,7 @@ parameters:
           path: src/Database.php
         - identifier: method.notFound
           path: src/Transaction.php
-        - identifier: property.notFound
-          path: src/Transaction.php
         - identifier: method.notFound
-          path: src/ReadTransaction.php
-        - identifier: property.notFound
           path: src/ReadTransaction.php
         - identifier: method.notFound
           path: src/RangeResult.php

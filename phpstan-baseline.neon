@@ -1,0 +1,331 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Cannot access property \$debug_no_materialize on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Cannot access property \$free_load_f on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Cannot access property \$get_load_f on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Cannot access property \$granule_parallelism on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Cannot access property \$start_load_f on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Cannot access property \$user_context on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Property CrazyGoat\\FoundationDB\\BlobGranuleReadContext\:\:\$buffers \(array\<int, FFI\\CData\>\) does not accept array\<int, FFI\\CData\|null\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Property CrazyGoat\\FoundationDB\\BlobGranuleReadContext\:\:\$context \(FFI\\CData\) does not accept FFI\\CData\|null\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: src/BlobGranuleReadContext.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Database.php
+
+		-
+			message: '#^Parameter \#1 \$tpointer of class CrazyGoat\\FoundationDB\\Tenant constructor expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Database.php
+
+		-
+			message: '#^Parameter \#1 \$tpointer of class CrazyGoat\\FoundationDB\\Transaction constructor expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Database.php
+
+		-
+			message: '#^Parameter \#1 \$dpointer of class CrazyGoat\\FoundationDB\\Database constructor expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/FoundationDB.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/FoundationDB.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureBool.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Future/FutureBool.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureDouble.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Future/FutureDouble.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureGranuleSummaryArray.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Future/FutureGranuleSummaryArray.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Future/FutureGranuleSummaryArray.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureInt64.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Future/FutureInt64.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureKey.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Future/FutureKey.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:string\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Future/FutureKey.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureKeyArray.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Future/FutureKeyArray.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Future/FutureKeyArray.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureKeyRangeArray.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Future/FutureKeyRangeArray.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Future/FutureKeyRangeArray.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: src/Future/FutureKeyValueArray.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Future/FutureKeyValueArray.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Future/FutureKeyValueArray.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: src/Future/FutureMappedKeyValueArray.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Future/FutureMappedKeyValueArray.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Future/FutureMappedKeyValueArray.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureStringArray.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Future/FutureStringArray.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Future/FutureStringArray.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Future/FutureUInt64.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Future/FutureUInt64.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: src/Future/FutureValue.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Future/FutureValue.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:string\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Future/FutureValue.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/NativeClient.php
+
+		-
+			message: '#^Parameter \#1 \$type of method FFI\:\:cast\(\) expects FFI\\CType\|string, FFI\\CType\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/NativeClient.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/ReadTransaction.php
+
+		-
+			message: '#^Offset int\<0, max\> might not exist on FFI\\CData\|null\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/ReadTransaction.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/ReadTransaction.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Tenant.php
+
+		-
+			message: '#^Parameter \#1 \$tpointer of class CrazyGoat\\FoundationDB\\Transaction constructor expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Tenant.php
+
+		-
+			message: '#^Cannot access property \$cdata on FFI\\CData\|null\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Transaction.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Transaction.php
+
+		-
+			message: '#^Parameter \#1 \$ptr of static method FFI\:\:addr\(\) expects FFI\\CData, FFI\\CData\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: tests/Unit/FutureAwaitAllTest.php

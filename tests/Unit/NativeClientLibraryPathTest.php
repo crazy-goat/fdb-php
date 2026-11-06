@@ -91,9 +91,10 @@ final class NativeClientLibraryPathTest extends TestCase
      * the one used for FFI::cdef(). Environment-dependent: skipped when no
      * real libfdb_c is installed, because unit tests must not require
      * FoundationDB. The path is exercised for real in the compose php
-     * container and in the PHP 8.4 unit-test CI job, which installs the
-     * FoundationDB client library; elsewhere (for example a macOS host without
-     * the client) the test is skipped explicitly rather than silently.
+     * container and in the unit-test CI matrix, which installs the
+     * FoundationDB client library for every supported PHP version; elsewhere
+     * (for example a macOS host without the client) the test is skipped
+     * explicitly rather than silently.
      */
     #[Test]
     public function pinnedAbsolutePathIsUsedForLibraryLoading(): void
