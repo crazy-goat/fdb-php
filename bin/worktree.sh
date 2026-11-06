@@ -89,6 +89,9 @@ project="$(tr '[:upper:]' '[:lower:]' <<<"$repo-issue-$issue" | tr -c 'a-z0-9\n'
       port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
       echo "$name=$port"
     done
+  # The php service runs as this user, so the bind-mounted worktree stays writable.
+  echo "HOST_UID=$(id -u)"
+  echo "HOST_GID=$(id -g)"
 } >.env.worktree
 
 export COMPOSE_PROJECT_NAME="$project" COMPOSE_ENV_FILES=.env.worktree

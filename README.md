@@ -431,6 +431,21 @@ The five FDB services use `restart: unless-stopped`: `RebootWorkerTest` asks a s
 worker to suspend, then exit, and the container must come back for the cluster to stay
 healthy. `docker compose down` still stops the stack.
 
+The `php` service runs as `HOST_UID:HOST_GID` (default `1000:1000`) so the caches and
+dependencies it writes into the bind-mounted checkout belong to you. `bin/worktree.sh`
+writes both values to `.env.worktree`; if your UID/GID is not 1000 and you run
+`docker compose up -d` without loading that file, export `HOST_UID=$(id -u)` and
+`HOST_GID=$(id -g)` first.
+
+If you used the stack before this change, the checkout can still contain root-owned
+caches or `vendor/` that the container user cannot rewrite, and an existing
+`.env.worktree` can lack `HOST_UID`/`HOST_GID`. Fix this once with
+`sudo chown -R "$(id -u):$(id -g)" .` (or delete `.php-cs-fixer.cache`,
+`.phpunit.cache` and `vendor/`), then add `HOST_UID=$(id -u)` and
+`HOST_GID=$(id -g)` to `.env.worktree`. Worktrees created by `bin/worktree.sh` get
+them automatically. This is a one-time upgrade step, not something to do on every
+run.
+
 Cross-binding conformance via the upstream binding tester (nightly CI):
 
 ```bash

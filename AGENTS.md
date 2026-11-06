@@ -76,6 +76,11 @@ command on Linux x86_64, `brew install` on macOS) when a tool is missing or olde
   `make test-integration`, or `docker compose exec php ...`. Host-side
   `composer test:integration` with a `127.0.0.1:4500-4502` cluster file works only with the
   default ports (the main checkout and CI).
+- The `php` service runs as `HOST_UID:HOST_GID` (default `1000:1000`) so files it writes to
+  the bind-mounted worktree (caches, `composer.lock`, `vendor/`) belong to the host user.
+  `bin/worktree.sh` writes both to `.env.worktree`; a user whose UID/GID is not 1000 and
+  who runs `docker compose up -d` without loading that file must export `HOST_UID` and
+  `HOST_GID` first (CI sets them from `id -u`/`id -g`).
 - CI (`e2e-tests`) starts the cluster with the default ports, writes a host-side cluster file
   with `127.0.0.1:4500-4502` and sets `FDB_REBOOT_TEST_IP` to the container address of
   `fdb-server-1`.
