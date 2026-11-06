@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-06
+
 ### Changed
 - [#167] `AGENTS.md`, `README.md` and `composer.json` describe `ext-gmp` consistently as
   optional and only required for arbitrary-precision integers in the tuple layer. The
