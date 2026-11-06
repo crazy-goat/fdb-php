@@ -99,6 +99,7 @@ services:
 
   fdb-config:
     image: foundationdb/foundationdb:7.3.75
+    init: true
     depends_on:
       - fdb-coord-1
       - fdb-coord-2
@@ -116,29 +117,99 @@ services:
         set -e
         rm -rf /var/fdb/logs/* 2>/dev/null || true
         mkdir -p /var/fdb
+        # The healthcheck requires this sentinel, so php only starts after the
+        # tenant-mode loop below has succeeded. Remove it on every start.
+        rm -f /var/fdb/tenant-mode-configured
         echo "docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502" > /var/fdb/fdb.cluster
-        
-        echo "Waiting for FDB cluster..."
-        for i in $$(seq 1 60); do
-          if fdbcli --exec "status" 2>/dev/null | grep -q "processes"; then
-            echo "Cluster is ready!"
-            break
-          fi
-          sleep 2
-        done
-        
+
         echo "Configuring FDB cluster..."
-        fdbcli --exec "configure new double ssd blob_granules_enabled=1" \
-          || fdbcli --exec "configure blob_granules_enabled=1" \
-          || echo "Already configured"
+        # A fresh cluster cannot report "The database is available" before it
+        # has been configured, so create it first. Retry until enough processes
+        # have joined; an existing cluster is reconfigured instead.
+        configured=0
+        start=$$(date +%s)
+        while [ "$$configured" -ne 1 ]; do
+          if out=$$(fdbcli --exec "configure new double ssd blob_granules_enabled=1" 2>&1); then
+            echo "$$out"
+            configured=1
+          else
+            echo "$$out"
+            if echo "$$out" | grep -q "Database already exists"; then
+              if out=$$(fdbcli --exec "configure blob_granules_enabled=1" 2>&1); then
+                echo "$$out"
+                configured=1
+              else
+                echo "$$out"
+              fi
+            fi
+          fi
+          if [ "$$configured" -ne 1 ]; then
+            now=$$(date +%s)
+            if [ $$((now - start)) -ge 120 ]; then
+              echo "Could not configure FDB cluster within 120s" >&2
+              exit 1
+            fi
+            sleep 2
+          fi
+        done
+        echo "Cluster is configured!"
+
+        echo "Waiting for FDB cluster..."
+        ready=0
+        start=$$(date +%s)
+        while [ "$$ready" -ne 1 ]; do
+          # "unavailable" contains "available", so match the whole sentence.
+          # timeout keeps a blocking status call from stretching the 120 s bound.
+          if timeout 5 fdbcli --exec "status minimal" 2>/dev/null | grep -q "The database is available"; then
+            ready=1
+          else
+            now=$$(date +%s)
+            if [ $$((now - start)) -ge 120 ]; then
+              echo "FDB cluster did not become available within 120s" >&2
+              exit 1
+            fi
+            sleep 2
+          fi
+        done
+        echo "Cluster is ready!"
+
+        echo "Configuring tenant mode..."
+        # The cluster can report "available" before every process has joined, and
+        # configure then fails with "Not enough processes exist", so retry it.
+        tenant_mode=0
+        start=$$(date +%s)
+        while [ "$$tenant_mode" -ne 1 ]; do
+          out=$$(fdbcli --exec "configure tenant_mode=optional_experimental" 2>&1) || true
+          echo "$$out"
+          if echo "$$out" | grep -q "Configuration changed"; then
+            tenant_mode=1
+          else
+            now=$$(date +%s)
+            if [ $$((now - start)) -ge 120 ]; then
+              echo "Could not configure tenant mode within 120s" >&2
+              exit 1
+            fi
+            sleep 2
+          fi
+        done
+        echo "Tenant mode configured"
+        touch /var/fdb/tenant-mode-configured
+
         fdbcli --exec "status"
         exec tail -f /dev/null
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /var/fdb/tenant-mode-configured && timeout 4 fdbcli --exec 'status minimal' 2>/dev/null | grep -q 'The database is available'"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
 
   php:
     build:
       context: ./docker/php
     depends_on:
-      - fdb-config
+      fdb-config:
+        condition: service_healthy
     volumes:
       - .:/app
     environment:
