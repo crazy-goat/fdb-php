@@ -13,19 +13,34 @@ step() {
     "$@" || failed+=("$name")
 }
 
-# Keep these versions in sync with the install steps in .github/workflows/ci.yml.
-CI_SHELLCHECK_VERSION="0.11.0"
-CI_HADOLINT_VERSION="2.12.0"
-CI_ACTIONLINT_VERSION="1.7.7"
-SHELLCHECK_INSTALL="mkdir -p \"\$HOME/.local/bin\" && \
-curl -sSfL https://github.com/koalaman/shellcheck/releases/download/v${CI_SHELLCHECK_VERSION}/shellcheck-v${CI_SHELLCHECK_VERSION}.linux.x86_64.tar.xz \
-| tar -xJ --strip-components=1 -C \"\$HOME/.local/bin\" shellcheck-v${CI_SHELLCHECK_VERSION}/shellcheck"
-HADOLINT_INSTALL="mkdir -p \"\$HOME/.local/bin\" && \
-curl -sSfL -o \"\$HOME/.local/bin/hadolint\" https://github.com/hadolint/hadolint/releases/download/v${CI_HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
-chmod +x \"\$HOME/.local/bin/hadolint\""
-ACTIONLINT_INSTALL="mkdir -p \"\$HOME/.local/bin\" && \
-curl -sSfL https://github.com/rhysd/actionlint/releases/download/v${CI_ACTIONLINT_VERSION}/actionlint_${CI_ACTIONLINT_VERSION}_linux_amd64.tar.gz \
-| tar -xz -C \"\$HOME/.local/bin\" actionlint"
+# Versions and asset checksums live in .lint-tools.env so local lint and CI cannot drift.
+# shellcheck source=.lint-tools.env
+# shellcheck disable=SC1091
+. ./.lint-tools.env
+
+SHELLCHECK_INSTALL="set -euo pipefail
+tmp=\$(mktemp)
+trap 'rm -f \"\$tmp\"' EXIT
+curl -sSfL -o \"\$tmp\" https://github.com/koalaman/shellcheck/releases/download/v${LINT_SHELLCHECK_VERSION}/shellcheck-v${LINT_SHELLCHECK_VERSION}.linux.x86_64.tar.xz
+printf '%s  %s\\n' '${LINT_SHELLCHECK_SHA256}' \"\$tmp\" | sha256sum -c -
+mkdir -p \"\$HOME/.local/bin\"
+tar -xJ --strip-components=1 -C \"\$HOME/.local/bin\" -f \"\$tmp\" shellcheck-v${LINT_SHELLCHECK_VERSION}/shellcheck"
+
+HADOLINT_INSTALL="set -euo pipefail
+tmp=\$(mktemp)
+trap 'rm -f \"\$tmp\"' EXIT
+curl -sSfL -o \"\$tmp\" https://github.com/hadolint/hadolint/releases/download/v${LINT_HADOLINT_VERSION}/hadolint-Linux-x86_64
+printf '%s  %s\\n' '${LINT_HADOLINT_SHA256}' \"\$tmp\" | sha256sum -c -
+mkdir -p \"\$HOME/.local/bin\"
+install -m 0755 \"\$tmp\" \"\$HOME/.local/bin/hadolint\""
+
+ACTIONLINT_INSTALL="set -euo pipefail
+tmp=\$(mktemp)
+trap 'rm -f \"\$tmp\"' EXIT
+curl -sSfL -o \"\$tmp\" https://github.com/rhysd/actionlint/releases/download/v${LINT_ACTIONLINT_VERSION}/actionlint_${LINT_ACTIONLINT_VERSION}_linux_amd64.tar.gz
+printf '%s  %s\\n' '${LINT_ACTIONLINT_SHA256}' \"\$tmp\" | sha256sum -c -
+mkdir -p \"\$HOME/.local/bin\"
+tar -xz -C \"\$HOME/.local/bin\" -f \"\$tmp\" actionlint"
 
 tool_version() {
     "$1" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 | cut -d. -f1-3
@@ -81,14 +96,14 @@ require_tool() {
     fi
 }
 
-require_tool shellcheck "$CI_SHELLCHECK_VERSION" \
-    "https://github.com/koalaman/shellcheck/releases/tag/v$CI_SHELLCHECK_VERSION" \
+require_tool shellcheck "$LINT_SHELLCHECK_VERSION" \
+    "https://github.com/koalaman/shellcheck/releases/tag/v$LINT_SHELLCHECK_VERSION" \
     "$SHELLCHECK_INSTALL"
-require_tool hadolint "$CI_HADOLINT_VERSION" \
-    "https://github.com/hadolint/hadolint/releases/tag/v$CI_HADOLINT_VERSION" \
+require_tool hadolint "$LINT_HADOLINT_VERSION" \
+    "https://github.com/hadolint/hadolint/releases/tag/v$LINT_HADOLINT_VERSION" \
     "$HADOLINT_INSTALL"
-require_tool actionlint "$CI_ACTIONLINT_VERSION" \
-    "https://github.com/rhysd/actionlint/releases/tag/v$CI_ACTIONLINT_VERSION" \
+require_tool actionlint "$LINT_ACTIONLINT_VERSION" \
+    "https://github.com/rhysd/actionlint/releases/tag/v$LINT_ACTIONLINT_VERSION" \
     "$ACTIONLINT_INSTALL"
 
 if [ "$FIX" = 1 ]; then
