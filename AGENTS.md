@@ -23,7 +23,8 @@ Everything is written in English (code, comments, docs, commits, issues).
 
 ## Commands
 
-PHP 8.2+ with `ext-ffi` and `ext-gmp`, plus the FoundationDB client library `libfdb_c` 7.3.x
+PHP 8.2+ with `ext-ffi` and optional `ext-gmp` (required for arbitrary-precision
+integers in the tuple layer), plus the FoundationDB client library `libfdb_c` 7.3.x
 for anything that opens a database. CI runs PHP 8.2, 8.3 and 8.4.
 
 ```bash
