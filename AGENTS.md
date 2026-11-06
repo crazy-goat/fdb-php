@@ -82,11 +82,11 @@ container; it needs `shellcheck` and `vendor/` from `composer install`.
 ## CI
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master`. The `changes` job
-detects documentation-only changes and the `docs` job checks them fast. `check-actor`, `lint`,
-`unit-tests` and `e2e-tests` run only for code changes by owners, collaborators and
-`dependabot[bot]`. `ci-ok`
-aggregates the results and is the required check. `.github/workflows/release.yml` creates the
-GitHub Release when a `v*` tag is pushed.
+detects documentation-only changes and the `docs` job checks them fast. `lint`, `unit-tests`
+and `e2e-tests` run only for code changes. Pull requests from forks need a maintainer's
+approval before workflows run (repository setting), so there is no actor check.
+`ci-ok` aggregates the results and is the required check. `.github/workflows/release.yml`
+creates the GitHub Release when a `v*` tag is pushed.
 
 ## Conventions
 
