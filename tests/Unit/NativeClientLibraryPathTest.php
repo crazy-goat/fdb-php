@@ -21,6 +21,7 @@ final class NativeClientLibraryPathTest extends TestCase
     protected function tearDown(): void
     {
         putenv(NativeClient::LIBRARY_PATH_ENV);
+        NativeClient::resetInstance();
     }
 
     #[Test]
@@ -87,8 +88,12 @@ final class NativeClientLibraryPathTest extends TestCase
 
     /**
      * Functional check: when a pinned path is configured, that exact path is
-     * the one used for FFI::cdef(). Skipped when no real libfdb_c is installed
-     * (unit tests must not require FoundationDB).
+     * the one used for FFI::cdef(). Environment-dependent: skipped when no
+     * real libfdb_c is installed, because unit tests must not require
+     * FoundationDB. The path is exercised for real in the compose php
+     * container and in the PHP 8.4 unit-test CI job, which installs the
+     * FoundationDB client library; elsewhere (for example a macOS host without
+     * the client) the test is skipped explicitly rather than silently.
      */
     #[Test]
     public function pinnedAbsolutePathIsUsedForLibraryLoading(): void
@@ -99,7 +104,9 @@ final class NativeClientLibraryPathTest extends TestCase
             self::markTestSkipped('libfdb_c.so is not installed on this machine');
         }
 
-        $client = (new \ReflectionClass(NativeClient::class))->newInstance($realPath);
+        putenv(NativeClient::LIBRARY_PATH_ENV . '=' . $realPath);
+        NativeClient::resetInstance();
+        $client = NativeClient::getInstance();
 
         self::assertSame($realPath, $client->getLibraryPath());
         // The pinned path must be loadable by FFI::cdef() with the real header.
