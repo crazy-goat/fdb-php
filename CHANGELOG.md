@@ -12,6 +12,10 @@
   from the matching `CHANGELOG.md` section.
 
 ### Changed
+- [#144] `bin/lint.sh` checks for `shellcheck` 0.11.0 and `hadolint` 2.12.0 before running
+  any check and fails with the release link and the CI install command when a tool is missing
+  or older; `AGENTS.md` and `README.md` name both tools and versions, and `make help`
+  names both tools.
 - [#129] Coding standard: PHP_CodeSniffer (`phpcs` / `phpcbf`) is replaced by PHP-CS-Fixer,
   following the organization lint standard. `.php-cs-fixer.dist.php` keeps the old rules
   (`@PER-CS2x0`, strict types, sorted and unused imports, trailing array commas and the null
