@@ -91,7 +91,7 @@ final class TransactionRetryLimitTest extends TestCase
         FoundationDB::defaultTransactionRetryLimit(2);
 
         try {
-            [, $exception] = $this->capture(fn (): mixed => $db->transact(
+            [, $exception] = $this->capture(fn(): mixed => $db->transact(
                 function (Transaction $tr) use ($db): string {
                     static $round = 0;
                     ++$round;
@@ -168,7 +168,7 @@ final class TransactionRetryLimitTest extends TestCase
         FoundationDB::defaultTransactionTimeoutSeconds(0.05);
 
         try {
-            [, $exception] = $this->capture(fn (): mixed => $db->transact(
+            [, $exception] = $this->capture(fn(): mixed => $db->transact(
                 function (Transaction $tr) use ($db): string {
                     static $round = 0;
                     ++$round;
@@ -203,7 +203,7 @@ final class TransactionRetryLimitTest extends TestCase
         // Snapshot reads cannot conflict, so a clean read proves the
         // readTransact path is wired through the bounded loop without
         // changing its behaviour.
-        $value = $db->readTransact(static fn (Snapshot $snap): ?string => $snap->get(self::KEY)->await());
+        $value = $db->readTransact(static fn(Snapshot $snap): ?string => $snap->get(self::KEY)->await());
 
         self::assertNull($value);
     }

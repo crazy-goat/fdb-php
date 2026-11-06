@@ -30,8 +30,8 @@ final class RangeResultTest extends TestCase
      */
     private function fakeServer(array $data, int $batchSize): Closure
     {
-        $lowerBound = static fn (string $key): int => self::bound($data, $key, false);
-        $upperBound = static fn (string $key): int => self::bound($data, $key, true);
+        $lowerBound = static fn(string $key): int => self::bound($data, $key, false);
+        $upperBound = static fn(string $key): int => self::bound($data, $key, true);
 
         $resolveLower = (static fn(KeySelector $s): int => $s->orEqual ? $upperBound($s->key) : $lowerBound($s->key));
         $resolveUpper = (static fn(KeySelector $s): int => $s->orEqual ? $upperBound($s->key) : $lowerBound($s->key));
@@ -48,7 +48,7 @@ final class RangeResultTest extends TestCase
             $batchSize,
             $resolveLower,
             $resolveUpper
-): FutureKvResult {
+        ): FutureKvResult {
             $lo = $resolveLower($begin);
             $hi = $resolveUpper($end);
 
@@ -136,7 +136,7 @@ final class RangeResultTest extends TestCase
 
         self::assertCount(1000, $keys, 'reverse iteration must return every key');
         self::assertSame(1000, count(array_unique($keys)), 'reverse iteration must not duplicate keys');
-        self::assertSame(array_reverse(array_map(static fn (KeyValue $kv): string => $kv->key, $data)), $keys);
+        self::assertSame(array_reverse(array_map(static fn(KeyValue $kv): string => $kv->key, $data)), $keys);
     }
 
     #[Test]
@@ -159,7 +159,7 @@ final class RangeResultTest extends TestCase
 
         self::assertCount(1000, $keys, 'forward iteration must return every key');
         self::assertSame(1000, count(array_unique($keys)), 'forward iteration must not duplicate keys');
-        self::assertSame(array_map(static fn (KeyValue $kv): string => $kv->key, $data), $keys);
+        self::assertSame(array_map(static fn(KeyValue $kv): string => $kv->key, $data), $keys);
     }
 
     #[Test]
@@ -218,7 +218,7 @@ final class RangeResultTest extends TestCase
         ) use (
             &$calls,
             $base
-): FutureKvResult {
+        ): FutureKvResult {
             $calls++;
 
             return $base($begin, $end, $limit, $mode, $iteration, $reverse);
@@ -246,7 +246,7 @@ final class RangeResultTest extends TestCase
         // 1000 keys in batches of 100 = exactly 10 round trips, every key once.
         self::assertCount(1000, $keys);
         self::assertSame(10, $calls);
-        self::assertSame(array_map(static fn (KeyValue $kv): string => $kv->key, $data), $keys);
+        self::assertSame(array_map(static fn(KeyValue $kv): string => $kv->key, $data), $keys);
     }
 
     #[Test]
@@ -265,7 +265,7 @@ final class RangeResultTest extends TestCase
         ) use (
             &$calls,
             $base
-): FutureKvResult {
+        ): FutureKvResult {
             $calls++;
             self::assertLessThanOrEqual(25, $limit, 'prefetching must never request more rows than the limit allows');
 
@@ -285,6 +285,6 @@ final class RangeResultTest extends TestCase
         }
 
         self::assertCount(25, $keys);
-        self::assertSame(array_map(static fn (KeyValue $kv): string => $kv->key, array_slice($data, 0, 25)), $keys);
+        self::assertSame(array_map(static fn(KeyValue $kv): string => $kv->key, array_slice($data, 0, 25)), $keys);
     }
 }

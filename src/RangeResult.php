@@ -31,7 +31,7 @@ final readonly class RangeResult implements \IteratorAggregate
             $this->beginSelector,
             $this->endSelector,
             $this->options,
-            fn (
+            fn(
                 KeySelector $begin,
                 KeySelector $end,
                 int $limit,

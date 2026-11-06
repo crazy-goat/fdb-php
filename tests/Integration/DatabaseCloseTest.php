@@ -73,7 +73,7 @@ final class DatabaseCloseTest extends TestCase
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('closed');
-        $db->transact(fn (): null => null);
+        $db->transact(fn(): null => null);
     }
 
     #[Test]

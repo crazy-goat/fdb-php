@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- [#125] `bin/lint.sh` is the single lint entry point (PHPCS, Rector dry run, PHPStan, shellcheck, hadolint; `--fix` runs Rector and PHPCBF first). `composer lint`, `composer lint:fix`, `make lint`, `make lint-fix` and the CI `lint` job call it; `composer cs`, `phpstan` and `rector` still work.
+- [#125] `bin/lint.sh` is the single lint entry point (PHP-CS-Fixer, Rector dry run, PHPStan, shellcheck, hadolint; `--fix` runs Rector and PHP-CS-Fixer first). `composer lint`, `composer lint:fix`, `make lint`, `make lint-fix` and the CI `lint` job call it; `composer cs`, `phpstan` and `rector` still work.
 - [#119] Development process documentation: `docs/workflow.md` (issue, worktree, review, PR,
   merge) and `docs/release-workflow.md`, `AGENTS.md` with the project commands (`CLAUDE.md`
   now only imports it), worktree scripts under `bin/`, issue forms, a pull request template and
@@ -12,6 +12,12 @@
   from the matching `CHANGELOG.md` section.
 
 ### Changed
+- [#129] Coding standard: PHP_CodeSniffer (`phpcs` / `phpcbf`) is replaced by PHP-CS-Fixer,
+  following the organization lint standard. `.php-cs-fixer.dist.php` keeps the old rules
+  (`@PER-CS2x0`, strict types, sorted and unused imports, trailing array commas and the null
+  coalesce operator); `bin/lint.sh` runs `php-cs-fixer fix --dry-run --diff`, `composer cs`
+  and `composer cs-fix` wrap the new tool, and `phpcs.xml.dist`, `squizlabs/php_codesniffer`
+  and `slevomat/coding-standard` are removed.
 - [#119] CI: documentation-only pull requests run only the fast docs checks; the `ci-ok` job
   aggregates the results. CI now also runs on pushes to `master` and no longer on tags.
 - [#119] `docker-compose.yml`: host ports are variables with the old defaults (`FDB_COORD_1_PORT`

@@ -13,11 +13,10 @@
         "php": ">=8.2"
     },
     "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
         "phpstan/phpstan": "2.3.1",
         "phpunit/phpunit": "^11.0",
-        "rector/rector": "2.6.7",
-        "slevomat/coding-standard": "^8.15",
-        "squizlabs/php_codesniffer": "^3.9 || ^4.0"
+        "rector/rector": "2.6.7"
     },
     "suggest": {
         "ext-ffi": "Required for the native FoundationDB client bindings",
@@ -38,8 +37,8 @@
         "lint": "bin/lint.sh",
         "lint:fix": "bin/lint.sh --fix",
         "phpstan": "phpstan analyse --memory-limit=512M",
-        "cs": "phpcs --standard=phpcs.xml.dist",
-        "cs-fix": "phpcbf --standard=phpcs.xml.dist",
+        "cs": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix",
         "test": "phpunit",
         "test:unit": "phpunit --testsuite=Unit",
         "test:integration": "phpunit --testsuite=Integration",
@@ -48,9 +47,6 @@
         "rector:fix": "rector process"
     },
     "config": {
-        "sort-packages": true,
-        "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true
-        }
+        "sort-packages": true
     }
 }

@@ -726,7 +726,7 @@ final class DirectoryTest extends TestCase
         // the key we wrote through the child subspace — proving the write
         // landed inside the partition, not merely in the global content space.
         $kvs = $db->getRangeAllStartsWith($partition->rawPrefix);
-        $keys = array_map(static fn (KeyValue $kv): string => $kv->key, $kvs);
+        $keys = array_map(static fn(KeyValue $kv): string => $kv->key, $kvs);
         self::assertContains($key, $keys);
     }
 

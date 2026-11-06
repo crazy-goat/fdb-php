@@ -46,7 +46,7 @@ final class TransactionSnapshotLifecycleTest extends TestCase
         $deadline = microtime(true) + 30.0;
         for ($i = 0; $i < 200; $i++) {
             $value = $db->readTransact(
-                static fn ($snapshot) => $snapshot->get("test/snapshot-lifecycle/key" . ($i % 10))->await(),
+                static fn($snapshot) => $snapshot->get("test/snapshot-lifecycle/key" . ($i % 10))->await(),
             );
 
             self::assertSame('value' . ($i % 10), $value);

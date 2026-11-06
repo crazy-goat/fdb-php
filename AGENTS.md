@@ -29,11 +29,11 @@ for anything that opens a database. CI runs PHP 8.2, 8.3 and 8.4.
 ```bash
 composer install
 
-# Lint: PHPCS + Rector (dry run) + PHPStan (level 9) + shellcheck + hadolint; check only
+# Lint: PHP-CS-Fixer + Rector (dry run) + PHPStan (level 9) + shellcheck + hadolint; check only
 bin/lint.sh              # same as composer lint and make lint
-bin/lint.sh --fix        # Rector (apply) + PHPCBF, then check (composer lint:fix, make lint-fix)
-composer cs              # PHPCS only
-composer cs-fix          # PHPCBF only
+bin/lint.sh --fix        # Rector (apply) + PHP-CS-Fixer (apply), then check (composer lint:fix, make lint-fix)
+composer cs              # PHP-CS-Fixer only (dry run)
+composer cs-fix          # PHP-CS-Fixer only (apply)
 composer phpstan         # PHPStan only
 composer rector          # Rector dry run
 composer rector:fix      # Rector apply
@@ -113,8 +113,9 @@ creates the GitHub Release when a `v*` tag is pushed.
 
 ## Common lint issues
 
-- **PHPCS, multi-line function declaration** ("The closing parenthesis and the opening brace
-  ... must be on the same line"): run `bin/lint.sh --fix`, or fix the formatting by hand.
+- **PHP-CS-Fixer, code style:** PER-CS formatting may differ from the old PHP_CodeSniffer
+  output (for example `fn (` becomes `fn(`). Run `bin/lint.sh --fix` (or `composer cs-fix`
+  for the formatter only), then review the diff.
 - **Rector, unused parameters:** Rector may remove parameters from methods that are not
   implemented yet. If the method will be implemented later, the parameters must stay.
 - **PHPStan, property only written:** if a property is only written and never read, PHPStan
