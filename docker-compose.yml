@@ -2,132 +2,117 @@
 # The five FDB services restart automatically so that a rebooted worker comes
 # back and repeated test runs find a healthy cluster. `docker compose down`
 # still stops them, because the containers are stopped explicitly.
+#
+# Shared pieces of the five FDB services. The coordinator string appears only
+# once in this file (x-fdb-cluster-file); every service reads the same value.
+x-fdb-image: &fdb-image foundationdb/foundationdb:7.3.75
+x-fdb-cluster-file: &fdb-cluster-file |
+  docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+x-fdb-environment: &fdb-environment
+  FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
+  FDB_CLUSTER_FILE_CONTENTS: *fdb-cluster-file
+x-fdb-entrypoint: &fdb-entrypoint ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
+x-fdb-restart: &fdb-restart unless-stopped
+x-fdb-healthcheck: &fdb-healthcheck
+  test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
+  interval: 10s
+  timeout: 3s
+  retries: 3
+  start_period: 30s
+x-fdb-blobs-volume: &fdb-blobs-volume fdb-blobs:/var/fdb/blobs
+x-fdb-start-script-volume: &fdb-start-script-volume ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
+
 services:
   fdb-coord-1:
-    image: foundationdb/foundationdb:7.3.75
+    image: *fdb-image
     hostname: fdb-coord-1
     environment:
+      <<: *fdb-environment
       FDB_PORT: 4500
-      FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
-      FDB_CLUSTER_FILE_CONTENTS: |
-        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
     ports:
       - "${FDB_COORD_1_PORT:-4500}:4500"
     volumes:
       - fdb-coord-1-data:/var/fdb/data
-      - fdb-blobs:/var/fdb/blobs
-      - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
-    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 30s
+      - *fdb-blobs-volume
+      - *fdb-start-script-volume
+    entrypoint: *fdb-entrypoint
+    restart: *fdb-restart
+    healthcheck: *fdb-healthcheck
 
   fdb-coord-2:
-    image: foundationdb/foundationdb:7.3.75
+    image: *fdb-image
     hostname: fdb-coord-2
     environment:
+      <<: *fdb-environment
       FDB_PORT: 4501
-      FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
-      FDB_CLUSTER_FILE_CONTENTS: |
-        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
     ports:
       - "${FDB_COORD_2_PORT:-4501}:4501"
     volumes:
       - fdb-coord-2-data:/var/fdb/data
-      - fdb-blobs:/var/fdb/blobs
-      - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
-    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 30s
+      - *fdb-blobs-volume
+      - *fdb-start-script-volume
+    entrypoint: *fdb-entrypoint
+    restart: *fdb-restart
+    healthcheck: *fdb-healthcheck
 
   fdb-coord-3:
-    image: foundationdb/foundationdb:7.3.75
+    image: *fdb-image
     hostname: fdb-coord-3
     environment:
+      <<: *fdb-environment
       FDB_PORT: 4502
-      FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
-      FDB_CLUSTER_FILE_CONTENTS: |
-        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
     ports:
       - "${FDB_COORD_3_PORT:-4502}:4502"
     volumes:
       - fdb-coord-3-data:/var/fdb/data
-      - fdb-blobs:/var/fdb/blobs
-      - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
-    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 30s
+      - *fdb-blobs-volume
+      - *fdb-start-script-volume
+    entrypoint: *fdb-entrypoint
+    restart: *fdb-restart
+    healthcheck: *fdb-healthcheck
 
   fdb-server-1:
-    image: foundationdb/foundationdb:7.3.75
+    image: *fdb-image
     hostname: fdb-server-1
     depends_on:
       - fdb-coord-1
       - fdb-coord-2
       - fdb-coord-3
     environment:
+      <<: *fdb-environment
       FDB_PORT: 4510
-      FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
-      FDB_CLUSTER_FILE_CONTENTS: |
-        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
     ports:
       - "${FDB_SERVER_1_PORT:-4510}:4510"
     volumes:
       - fdb-server-1-data:/var/fdb/data
-      - fdb-blobs:/var/fdb/blobs
-      - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
-    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 30s
+      - *fdb-blobs-volume
+      - *fdb-start-script-volume
+    entrypoint: *fdb-entrypoint
+    restart: *fdb-restart
+    healthcheck: *fdb-healthcheck
 
   fdb-server-2:
-    image: foundationdb/foundationdb:7.3.75
+    image: *fdb-image
     hostname: fdb-server-2
     depends_on:
       - fdb-coord-1
       - fdb-coord-2
       - fdb-coord-3
     environment:
+      <<: *fdb-environment
       FDB_PORT: 4511
-      FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
-      FDB_CLUSTER_FILE_CONTENTS: |
-        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
     ports:
       - "${FDB_SERVER_2_PORT:-4511}:4511"
     volumes:
       - fdb-server-2-data:/var/fdb/data
-      - fdb-blobs:/var/fdb/blobs
-      - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
-    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 30s
+      - *fdb-blobs-volume
+      - *fdb-start-script-volume
+    entrypoint: *fdb-entrypoint
+    restart: *fdb-restart
+    healthcheck: *fdb-healthcheck
 
   fdb-config:
-    image: foundationdb/foundationdb:7.3.75
+    image: *fdb-image
     init: true
     depends_on:
       fdb-coord-1:
@@ -142,8 +127,7 @@ services:
         condition: service_healthy
     environment:
       FDB_PORT: 4500
-      FDB_CLUSTER_FILE_CONTENTS: |
-        docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+      FDB_CLUSTER_FILE_CONTENTS: *fdb-cluster-file
     entrypoint:
       - /bin/sh
       - -c
@@ -154,7 +138,7 @@ services:
         # The healthcheck requires this sentinel, so php only starts after the
         # tenant-mode loop below has succeeded. Remove it on every start.
         rm -f /var/fdb/tenant-mode-configured
-        echo "docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502" > /var/fdb/fdb.cluster
+        printf '%s' "$$FDB_CLUSTER_FILE_CONTENTS" > /var/fdb/fdb.cluster
 
         echo "Configuring FDB cluster..."
         # A fresh cluster cannot report "The database is available" before it
@@ -252,6 +236,7 @@ services:
       - .:/app
     environment:
       FDB_CLUSTER_FILE: /app/fdb.cluster
+      FDB_CLUSTER_FILE_CONTENTS: *fdb-cluster-file
       # The image has no home directory for the host user; Composer needs one.
       HOME: /tmp
     working_dir: /app
@@ -261,7 +246,7 @@ services:
       - /bin/bash
       - -c
       - |
-        echo "docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502" > /app/fdb.cluster
+        printf '%s' "$$FDB_CLUSTER_FILE_CONTENTS" > /app/fdb.cluster
         exec tail -f /dev/null
 
 volumes:
