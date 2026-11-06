@@ -390,6 +390,8 @@ The development process and the project commands are described in [AGENTS.md](AG
 - PHP 8.2+ with `ext-ffi`
 - Docker + Docker Compose (for integration tests)
 - Composer
+- [shellcheck](https://github.com/koalaman/shellcheck/releases/tag/v0.11.0) 0.11.0 (lint)
+- [hadolint](https://github.com/hadolint/hadolint/releases/tag/v2.12.0) 2.12.0 (lint)
 
 ### Setup
 
