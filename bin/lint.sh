@@ -16,12 +16,16 @@ step() {
 # Keep these versions in sync with the install steps in .github/workflows/ci.yml.
 CI_SHELLCHECK_VERSION="0.11.0"
 CI_HADOLINT_VERSION="2.12.0"
+CI_ACTIONLINT_VERSION="1.7.7"
 SHELLCHECK_INSTALL="mkdir -p \"\$HOME/.local/bin\" && \
 curl -sSfL https://github.com/koalaman/shellcheck/releases/download/v${CI_SHELLCHECK_VERSION}/shellcheck-v${CI_SHELLCHECK_VERSION}.linux.x86_64.tar.xz \
 | tar -xJ --strip-components=1 -C \"\$HOME/.local/bin\" shellcheck-v${CI_SHELLCHECK_VERSION}/shellcheck"
 HADOLINT_INSTALL="mkdir -p \"\$HOME/.local/bin\" && \
 curl -sSfL -o \"\$HOME/.local/bin/hadolint\" https://github.com/hadolint/hadolint/releases/download/v${CI_HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
 chmod +x \"\$HOME/.local/bin/hadolint\""
+ACTIONLINT_INSTALL="mkdir -p \"\$HOME/.local/bin\" && \
+curl -sSfL https://github.com/rhysd/actionlint/releases/download/v${CI_ACTIONLINT_VERSION}/actionlint_${CI_ACTIONLINT_VERSION}_linux_amd64.tar.gz \
+| tar -xz -C \"\$HOME/.local/bin\" actionlint"
 
 tool_version() {
     "$1" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 | cut -d. -f1-3
@@ -83,6 +87,9 @@ require_tool shellcheck "$CI_SHELLCHECK_VERSION" \
 require_tool hadolint "$CI_HADOLINT_VERSION" \
     "https://github.com/hadolint/hadolint/releases/tag/v$CI_HADOLINT_VERSION" \
     "$HADOLINT_INSTALL"
+require_tool actionlint "$CI_ACTIONLINT_VERSION" \
+    "https://github.com/rhysd/actionlint/releases/tag/v$CI_ACTIONLINT_VERSION" \
+    "$ACTIONLINT_INSTALL"
 
 if [ "$FIX" = 1 ]; then
     vendor/bin/rector process --no-progress-bar
@@ -94,6 +101,7 @@ step "rector" vendor/bin/rector process --dry-run --no-progress-bar
 step "phpstan" vendor/bin/phpstan analyse --memory-limit=512M --no-progress
 step "shellcheck" bash -c 'git ls-files -z "*.sh" | xargs -0 -r shellcheck'
 step "hadolint" bash -c 'git ls-files -z "*Dockerfile*" | xargs -0 -r hadolint'
+step "actionlint" actionlint
 
 if [ "${#failed[@]}" -gt 0 ]; then
     echo "Failed: ${failed[*]}" >&2
