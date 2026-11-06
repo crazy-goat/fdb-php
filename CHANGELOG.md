@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Fixed
+- [#161] The `php` compose service runs as the host user (`HOST_UID:HOST_GID`, default
+  `1000:1000`, `HOME=/tmp`), so `.php-cs-fixer.cache`, `.phpunit.cache`, `composer.lock`
+  and `vendor/` written in the container belong to the host user and host-side `bin/lint.sh`
+  keeps working after `make cs` / `make test-unit`. `bin/worktree.sh` and the nightly
+  binding tester workflow export the real UID/GID; a non-1000 user who starts compose
+  directly must export them. The `php` service no longer mounts the FDB-only
+  `fdb-blobs` volume. Upgrade note: a checkout or worktree created before this change can
+  still contain root-owned caches/`vendor/` and an old `.env.worktree` without
+  `HOST_UID`/`HOST_GID`; see `README.md` for the one-time cleanup.
 - [#163] `bin/lint.sh` is portable and fails fast: it checks `.lint-tools.env` and `vendor/`
   before running anything, replaces the BSD-incompatible `xargs -0 -r` pipelines with bash
   loops that keep a failure from being masked by a later file, and prints platform-aware

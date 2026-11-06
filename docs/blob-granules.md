@@ -24,8 +24,7 @@ FDB's storage tier, and how the storage tier can be relieved of cold data.
 store, so it does not crash-loop. `docker/fdb/start-fdb.sh` starts every
 `fdbserver` with `--knob-bg_url=file:///var/fdb/blobs/` (override it with the
 `FDB_BG_URL` environment variable). The `fdb-blobs` named volume is mounted at
-`/var/fdb/blobs` in the five FDB services and in the `php` service, so the
-blob manager and a client-side loader can see the same files.
+`/var/fdb/blobs` in the five FDB services, so the blob manager can see the files.
 `docker compose down -v` removes that volume together with the server data.
 
 The knob name is **lowercase**: `--knob-bg_url` works, while `--knob-BG_URL`
