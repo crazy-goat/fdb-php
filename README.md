@@ -425,6 +425,10 @@ docker compose exec php vendor/bin/phpunit --testsuite=Integration
 docker compose down -v
 ```
 
+The five FDB services use `restart: unless-stopped`: `RebootWorkerTest` asks a storage
+worker to suspend, then exit, and the container must come back for the cluster to stay
+healthy. `docker compose down` still stops the stack.
+
 Cross-binding conformance via the upstream binding tester (nightly CI):
 
 ```bash
