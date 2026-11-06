@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
 ### Added
 - [#125] `bin/lint.sh` is the single lint entry point (PHP-CS-Fixer, Rector dry run, PHPStan, shellcheck, hadolint; `--fix` runs Rector and PHP-CS-Fixer first). `composer lint`, `composer lint:fix`, `make lint`, `make lint-fix` and the CI `lint` job call it; `composer cs`, `phpstan` and `rector` still work.
 - [#119] Development process documentation: `docs/workflow.md` (issue, worktree, review, PR,
