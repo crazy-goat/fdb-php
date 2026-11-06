@@ -20,7 +20,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Map the host architecture to the FoundationDB deb suffix (aarch64/amd64).
 # dpkg's architecture is used because TARGETARCH is not always provided by
-# the docker-compose legacy builder.
+# the Compose legacy builder.
 RUN FDB_ARCH="$(dpkg --print-architecture | sed 's/^arm64$/aarch64/')" \
     && wget -q "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" \
         -O /tmp/fdb-clients.deb \

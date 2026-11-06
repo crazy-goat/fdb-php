@@ -132,20 +132,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Setup Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
       - name: Start 5-node FDB cluster
         run: |
-          docker-compose up -d fdb-coord-1 fdb-coord-2 fdb-coord-3 fdb-server-1 fdb-server-2 fdb-config
+          docker compose up -d fdb-coord-1 fdb-coord-2 fdb-coord-3 fdb-server-1 fdb-server-2 fdb-config
           
           # Wait for cluster to be ready
           echo "Waiting for FDB cluster..."
           start=$SECONDS
           # "unavailable" contains "available", so match the whole sentence.
-          until docker-compose exec -T fdb-config fdbcli --exec "status minimal" 2>/dev/null | grep -q "The database is available"; do
+          until docker compose exec -T fdb-config fdbcli --exec "status minimal" 2>/dev/null | grep -q "The database is available"; do
             if (( SECONDS - start >= 120 )); then
               echo "FDB cluster did not become available within 120s" >&2
               exit 1
@@ -154,8 +149,21 @@ jobs:
           done
           echo "FDB cluster is available after $((SECONDS - start))s"
 
+          # The fdb-config entrypoint configures tenant mode and only then writes
+          # the sentinel its healthcheck requires. The availability check above
+          # can pass earlier, so wait for the healthcheck before running tests.
+          # 360 s covers the entrypoint's three sequential 120 s retry loops.
+          until [ "$(docker compose ps --format '{{.Health}}' fdb-config)" = "healthy" ]; do
+            if (( SECONDS - start >= 360 )); then
+              echo "fdb-config did not become healthy within 360s" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "fdb-config is healthy after $((SECONDS - start))s"
+
           # Show cluster status
-          docker-compose exec -T fdb-config fdbcli --exec "status"
+          docker compose exec -T fdb-config fdbcli --exec "status"
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -178,8 +186,8 @@ jobs:
           echo "docker:docker@127.0.0.1:4500,127.0.0.1:4501,127.0.0.1:4502" > fdb.cluster
           
           # Get IP of fdb-server-1 for reboot tests
-          # Container name may vary, so we use docker-compose to find it
-          SERVER1_CONTAINER=$(docker-compose ps -q fdb-server-1)
+          # Container name may vary, so we use docker compose to find it
+          SERVER1_CONTAINER=$(docker compose ps -q fdb-server-1)
           if [ -n "$SERVER1_CONTAINER" ]; then
             SERVER1_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$SERVER1_CONTAINER")
             echo "FDB_REBOOT_TEST_IP=${SERVER1_IP}:4510" >> "$GITHUB_ENV"
@@ -189,22 +197,6 @@ jobs:
             echo "FDB_REBOOT_TEST_IP=172.18.0.5:4510" >> "$GITHUB_ENV"
           fi
 
-      - name: Configure tenant mode
-        run: |
-          # The cluster can report "available" before every process has joined, and
-          # configure then fails with "Not enough processes exist", so retry it.
-          start=$SECONDS
-          until out=$(docker-compose exec -T fdb-config fdbcli --exec "configure tenant_mode=optional_experimental" 2>&1) \
-            && grep -q "Configuration changed" <<< "$out"; do
-            echo "$out"
-            if (( SECONDS - start >= 120 )); then
-              echo "Could not configure tenant mode within 120s" >&2
-              exit 1
-            fi
-            sleep 2
-          done
-          echo "Tenant mode configured after $((SECONDS - start))s"
-
       - name: Run E2E tests
         env:
           FDB_CLUSTER_FILE: fdb.cluster
@@ -213,7 +205,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
 
   ci-ok:
     name: ci-ok

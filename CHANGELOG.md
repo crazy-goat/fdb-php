@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Changed
+- [#166] The five FDB services in `docker-compose.yml` share YAML anchors for the image,
+  coordinator string, environment, entrypoint, restart policy, healthcheck and common
+  volumes, so the coordinator string has a single source of truth and `fdb-config` and
+  `php` write it from `FDB_CLUSTER_FILE_CONTENTS` instead of hardcoding it. The e2e CI job
+  uses the `docker compose` plugin instead of installing the legacy `docker-compose`
+  binary, and its redundant tenant-mode step is gone because the `fdb-config` entrypoint
+  already configures tenant mode; the job now waits for that service's healthcheck before
+  running the tests.
 - [#164] PHPStan analyses for the PHP 8.2 package floor (`phpVersion: 80200`) instead of
   8.4, so functions added in PHP 8.3/8.4 are no longer accepted by analysis. The 73
   false positives from the PHP <= 8.3 FFI reflection stubs are recorded in

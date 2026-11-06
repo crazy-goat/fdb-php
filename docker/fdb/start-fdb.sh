@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Start an fdbserver for the docker-compose stack.
+# Start an fdbserver for the Docker Compose stack.
 #
 # Replaces /var/fdb/scripts/fdb.bash from the upstream image so the compose
 # stack can give the blob manager a real, shared blob store. The knob name is
