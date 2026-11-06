@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+- [#160] `docker-compose.yml` gives the blob manager a shared `file:///var/fdb/blobs/`
+  store (`fdb-blobs` volume, `--knob-bg_url` in `docker/fdb/start-fdb.sh`) and an
+  FDB healthcheck that fails on `Error="backup_invalid_url"`, so the blob manager
+  no longer crash-loops and `make test` / `make test-integration` no longer hang.
+  `BlobGranuleTest` clears the blob-range metadata it creates after every test,
+  so the no-worker cluster does not stay throttled to zero TPS after the suite.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added

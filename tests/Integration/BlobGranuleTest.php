@@ -8,18 +8,48 @@ use CrazyGoat\FoundationDB\BlobGranuleLoader;
 use CrazyGoat\FoundationDB\Database;
 use CrazyGoat\FoundationDB\FDBException;
 use CrazyGoat\FoundationDB\KeyRange;
+use CrazyGoat\FoundationDB\Tenant;
+use CrazyGoat\FoundationDB\Transaction;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 final class BlobGranuleTest extends TestCase
 {
-    use DatabaseCleanupTrait;
+    use DatabaseCleanupTrait {
+        tearDown as private cleanupDatabase;
+    }
+
+    /**
+     * Ranges this test blobbified, with the cleanup to run in tearDown().
+     *
+     * @var list<\Closure(): void>
+     */
+    private array $blobRangeCleanups = [];
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->getDatabase();
         $this->enableBlobGranules();
+    }
+
+    protected function tearDown(): void
+    {
+        // Unblobbify even when a test skips or fails: a range left behind on a
+        // cluster without blob workers makes ratekeeper set the transaction
+        // limits to 0 and degrades the whole stack.
+        foreach (array_reverse($this->blobRangeCleanups) as $cleanup) {
+            try {
+                $cleanup();
+            } catch (\Throwable) {
+                // Cleanup must not hide the test result.
+            }
+        }
+        $this->blobRangeCleanups = [];
+        $this->clearBlobRangeMetadata();
+
+        $this->cleanupDatabase();
+        parent::tearDown();
     }
 
     #[Test]
@@ -31,7 +61,7 @@ final class BlobGranuleTest extends TestCase
         $begin = 'bg_blobbify:';
         $end = 'bg_blobbify;';
 
-        $db->blobbifyRange($begin, $end);
+        $this->blobbifyTrackedRange($db, $begin, $end);
 
         $ranges = $db->listBlobbifiedRanges($begin, $end);
         self::assertNotEmpty($ranges);
@@ -56,7 +86,7 @@ final class BlobGranuleTest extends TestCase
         $begin = 'bg_ranges:';
         $end = 'bg_ranges;';
 
-        $db->blobbifyRange($begin, $end);
+        $this->blobbifyTrackedRange($db, $begin, $end);
 
         $tr = $db->createTransaction();
         try {
@@ -93,7 +123,7 @@ final class BlobGranuleTest extends TestCase
         $begin = 'bg_flush:';
         $end = 'bg_flush;';
 
-        $db->blobbifyRange($begin, $end);
+        $this->blobbifyTrackedRange($db, $begin, $end);
         $db->flushBlobRange($begin, $end, true);
 
         self::assertTrue($db->verifyBlobRange($begin, $end));
@@ -108,7 +138,7 @@ final class BlobGranuleTest extends TestCase
         $begin = 'bg_purge:';
         $end = 'bg_purge;';
 
-        $db->blobbifyRange($begin, $end);
+        $this->blobbifyTrackedRange($db, $begin, $end);
         $db->purgeBlobGranules($begin, $end);
         $db->waitPurgeGranulesComplete($end);
 
@@ -119,6 +149,10 @@ final class BlobGranuleTest extends TestCase
     public function tenantBlobGranuleLifecycle(): void
     {
         $name = 'test_bg_tenant';
+        $begin = 'bg_tenant:';
+        $end = 'bg_tenant;';
+        $tenant = null;
+        $tenantBlobbified = false;
         $this->createTenantViaFdbcli($name);
 
         try {
@@ -131,10 +165,8 @@ final class BlobGranuleTest extends TestCase
             $tr->commit()->await();
             $tr->reset();
 
-            $begin = 'bg_tenant:';
-            $end = 'bg_tenant;';
-
             $tenant->blobbifyRange($begin, $end);
+            $tenantBlobbified = true;
 
             $ranges = $tenant->listBlobbifiedRanges($begin, $end);
             self::assertNotEmpty($ranges);
@@ -145,6 +177,13 @@ final class BlobGranuleTest extends TestCase
             $tenant->purgeBlobGranules($begin, $end);
             $tenant->waitPurgeGranulesComplete($end);
         } finally {
+            if ($tenantBlobbified && $tenant instanceof Tenant) {
+                try {
+                    $tenant->unblobbifyRange($begin, $end);
+                } catch (\Throwable) {
+                    // Tenant cleanup must not hide the test result.
+                }
+            }
             $this->deleteTenantViaFdbcli($name);
         }
     }
@@ -154,7 +193,7 @@ final class BlobGranuleTest extends TestCase
     {
         $db = $this->getDatabase();
         $this->writeSampleData($db, 'bg_read', 20);
-        $db->blobbifyRange('bg_read:', 'bg_read;');
+        $this->blobbifyTrackedRange($db, 'bg_read:', 'bg_read;');
 
         $tr = $db->createTransaction();
         try {
@@ -170,7 +209,7 @@ final class BlobGranuleTest extends TestCase
     {
         $db = $this->getDatabase();
         $this->writeSampleData($db, 'bg_read_req', 20);
-        $db->blobbifyRange('bg_read_req:', 'bg_read_req;');
+        $this->blobbifyTrackedRange($db, 'bg_read_req:', 'bg_read_req;');
 
         $tr = $db->createTransaction();
         try {
@@ -214,7 +253,7 @@ final class BlobGranuleTest extends TestCase
     {
         $db = $this->getDatabase();
         $this->writeSampleData($db, 'bg_summary', 20);
-        $db->blobbifyRange('bg_summary:', 'bg_summary;');
+        $this->blobbifyTrackedRange($db, 'bg_summary:', 'bg_summary;');
 
         $tr = $db->createTransaction();
         try {
@@ -244,6 +283,34 @@ final class BlobGranuleTest extends TestCase
             $tr->summarizeBlobGranules('bg_summary_limit:', 'bg_summary_limit;', null, 0);
         } finally {
             $tr->reset();
+        }
+    }
+
+    private function blobbifyTrackedRange(Database $db, string $begin, string $end): void
+    {
+        $db->blobbifyRange($begin, $end);
+        $this->blobRangeCleanups[] = static function () use ($db, $begin, $end): void {
+            $db->unblobbifyRange($begin, $end);
+        };
+    }
+
+    /**
+     * Remove the inactive blob-range keys left by unblobbifyRange().
+     *
+     * unblobbifyRange() sets the range value to inactive but keeps the key in
+     * the system keyspace. Ratekeeper's checkAnyBlobRanges() counts any key in
+     * that range, so a cluster with no blob workers still throttles all
+     * transactions to 0 until the keys are gone.
+     */
+    private function clearBlobRangeMetadata(): void
+    {
+        try {
+            $this->getDatabase()->transact(static function (Transaction $tr): void {
+                $tr->options()->setAccessSystemKeys()->setPrioritySystemImmediate();
+                $tr->clearRange("\xff\x02/blobRange/", "\xff\x02/blobRange0");
+            });
+        } catch (\Throwable) {
+            // Cleanup must not hide the test result.
         }
     }
 
