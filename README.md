@@ -390,9 +390,7 @@ The development process and the project commands are described in [AGENTS.md](AG
 - PHP 8.2+ with `ext-ffi`
 - Docker + Docker Compose (for integration tests)
 - Composer
-- [shellcheck](https://github.com/koalaman/shellcheck/releases/tag/v0.11.0) 0.11.0 (lint)
-- [hadolint](https://github.com/hadolint/hadolint/releases/tag/v2.12.0) 2.12.0 (lint)
-- [actionlint](https://github.com/rhysd/actionlint/releases/tag/v1.7.7) 1.7.7 (lint)
+- [shellcheck](https://github.com/koalaman/shellcheck/releases), [hadolint](https://github.com/hadolint/hadolint/releases) and [actionlint](https://github.com/rhysd/actionlint/releases) (lint; versions and checksums pinned in `.lint-tools.env`)
 
 ### Setup
 

@@ -50,35 +50,43 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Install shellcheck
+      - name: Install lint tools
         run: |
+          set -euo pipefail
+          . .lint-tools.env
           mkdir -p "$HOME/.local/bin"
-          curl -sSfL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
-            | tar -xJ --strip-components=1 -C "$HOME/.local/bin" shellcheck-v0.11.0/shellcheck
+
+          shellcheck_tmp=$(mktemp)
+          curl -sSfL -o "$shellcheck_tmp" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${LINT_SHELLCHECK_VERSION}/shellcheck-v${LINT_SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          printf '%s  %s\n' "$LINT_SHELLCHECK_SHA256" "$shellcheck_tmp" | sha256sum -c -
+          tar -xJ --strip-components=1 -C "$HOME/.local/bin" -f "$shellcheck_tmp" \
+            "shellcheck-v${LINT_SHELLCHECK_VERSION}/shellcheck"
+          rm -f "$shellcheck_tmp"
+
+          hadolint_tmp=$(mktemp)
+          curl -sSfL -o "$hadolint_tmp" \
+            "https://github.com/hadolint/hadolint/releases/download/v${LINT_HADOLINT_VERSION}/hadolint-Linux-x86_64"
+          printf '%s  %s\n' "$LINT_HADOLINT_SHA256" "$hadolint_tmp" | sha256sum -c -
+          install -m 0755 "$hadolint_tmp" "$HOME/.local/bin/hadolint"
+          rm -f "$hadolint_tmp"
+
+          actionlint_tmp=$(mktemp)
+          curl -sSfL -o "$actionlint_tmp" \
+            "https://github.com/rhysd/actionlint/releases/download/v${LINT_ACTIONLINT_VERSION}/actionlint_${LINT_ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          printf '%s  %s\n' "$LINT_ACTIONLINT_SHA256" "$actionlint_tmp" | sha256sum -c -
+          tar -xz -C "$HOME/.local/bin" -f "$actionlint_tmp" actionlint
+          rm -f "$actionlint_tmp"
+
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Check shellcheck version
-        run: shellcheck --version
-
-      - name: Install hadolint
+      - name: Check lint tool versions
         run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sSfL -o "$HOME/.local/bin/hadolint" https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
-          chmod +x "$HOME/.local/bin/hadolint"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Check hadolint version
-        run: hadolint --version
-
-      - name: Install actionlint
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sSfL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
-            | tar -xz -C "$HOME/.local/bin" actionlint
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Check actionlint version
-        run: actionlint --version
+          set -euo pipefail
+          . .lint-tools.env
+          shellcheck --version | grep -F "version: ${LINT_SHELLCHECK_VERSION}" >/dev/null
+          hadolint --version | grep -F " ${LINT_HADOLINT_VERSION}" >/dev/null
+          actionlint --version | grep -xF "${LINT_ACTIONLINT_VERSION}" >/dev/null
 
       - name: Lint
         run: bin/lint.sh

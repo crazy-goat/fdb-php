@@ -15,6 +15,13 @@
   `BlobGranuleTest` clears the blob-range metadata it creates after every test,
   so the no-worker cluster does not stay throttled to zero TPS after the suite.
 
+### Security
+- [#162] The CI `lint` job and the install commands printed by `bin/lint.sh` download
+  shellcheck, hadolint and actionlint to a temporary file, verify its SHA-256 and only then
+  extract or install it. The install steps use `set -euo pipefail`, `$HOME/.local/bin` is
+  added to `$GITHUB_PATH` once, and the versions and checksums live in the tracked
+  `.lint-tools.env` instead of being repeated in the workflow, script and docs.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added
