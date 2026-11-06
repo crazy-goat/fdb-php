@@ -17,6 +17,31 @@ FDB's storage tier, and how the storage tier can be relieved of cold data.
 > in such setups. The same cluster capability is what gates
 > `readBlobGranules()` and `summarizeBlobGranules()` — see below.
 
+## Compose stack
+
+`docker-compose.yml` enables blob granules on its test cluster
+(`blob_granules_enabled=1`) and gives the blob manager a real file-backed
+store, so it does not crash-loop. `docker/fdb/start-fdb.sh` starts every
+`fdbserver` with `--knob-bg_url=file:///var/fdb/blobs/` (override it with the
+`FDB_BG_URL` environment variable). The `fdb-blobs` named volume is mounted at
+`/var/fdb/blobs` in the five FDB services and in the `php` service, so the
+blob manager and a client-side loader can see the same files.
+`docker compose down -v` removes that volume together with the server data.
+
+The knob name is **lowercase**: `--knob-bg_url` works, while `--knob-BG_URL`
+is silently ignored. An ignored URL brings back the crash loop:
+
+```text
+BlobManagerDied Error="backup_invalid_url" ErrorDescription="Backup Container URL invalid"
+```
+
+Each FDB service has a healthcheck that fails when its trace logs contain
+`Error="backup_invalid_url"`, and `fdb-config` waits for all five services to
+report healthy. A crash-looping blob manager therefore shows up as `unhealthy`
+in `docker compose ps` instead of silently passing. Normal events such as
+`BlobManagerDied Error="worker_removed"` during startup or rebalancing do not
+match the healthcheck.
+
 ## API overview
 
 All range endpoints are raw keys (`string`). Version arguments accept
@@ -136,5 +161,35 @@ $db->unblobbifyRange($begin, $end);
 
 `tests/Integration/BlobGranuleTest.php` exercises the whole lifecycle against
 a blob-granules-enabled cluster; the `docker-compose.yml` cluster is
-configured with `blob_granules_enabled=1`, and the test suite re-asserts it at
-runtime (skipping when the configuration is not available).
+configured with `blob_granules_enabled=1` and a file-backed blob store, and
+the test suite re-asserts the configuration at runtime (skipping when it is
+not available).
+
+Most of the class runs against the compose stack: `blobbifyRangeAndListBlobbifiedRanges`,
+`getBlobGranuleRangesListsGranuleBoundaries`,
+`flushBlobRangeCompactsAndKeepsRangeVerified`, `purgeBlobGranulesCompletes`,
+`tenantBlobGranuleLifecycle`, `readBlobGranulesRequiresLoader` and
+`summarizeBlobGranulesRejectsZeroRangeLimit`. Two tests may still skip, because
+a small five-process cluster runs a blob manager but recruits no blob workers.
+A read needs a real loader that can fetch the granule files, and a summary
+needs granule history.
+
+- `readBlobGranulesIssuesRequest` skips when the C API returns 1064, 2018 or
+  2108 (`Operation is not supported`).
+- `summarizeBlobGranulesReturnsSummaries` skips on 1064/2018
+  (`Read version is older than blob granule history supports`).
+
+Those two are expected. The whole integration suite reports 6 skips: four
+come from the suite-level skip in `AdminDestructiveOperationsTest` (destructive
+tests run only with `FDB_ENABLE_DESTRUCTIVE_ADMIN_TESTS=1`) and these two from
+`BlobGranuleTest`. Run PHPUnit with `--display-skipped` to list them. On a
+cluster where blob granules cannot be enabled at all, `enableBlobGranules()`
+skips the entire class with `Could not enable blob granules`.
+
+The class removes every range it creates in `tearDown()`, including skip and
+failure paths. `unblobbifyRange()` alone is not enough: it marks the range
+inactive but leaves its key in FDB's `\xff\x02/blobRange/` system range, and
+ratekeeper's `checkAnyBlobRanges()` treats any key there as an active range.
+On a cluster without blob workers that sets the transaction limit to 0, so the
+cleanup also clears the inactive range metadata. A completed test run leaves
+no blob ranges behind on the no-worker compose cluster.
