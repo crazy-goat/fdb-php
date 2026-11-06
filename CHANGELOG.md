@@ -12,6 +12,13 @@
   test also runs on 8.2.
 
 ### Fixed
+- [#165] `NativeClient` selects the pthread/dl libraries per platform instead of
+  loading `libpthread.so.0` and `libdl.so.2` on every OS. macOS uses the
+  `libSystem.B.dylib` symbols and the default client soname is
+  `libfdb_c.dylib`, so `NativeClient::getInstance()` works on macOS again. The
+  library-path test now honours `FDB_LIBRARY_PATH` first and probes the common
+  macOS `.dylib` and Linux `lib64` locations, and it restores an ambient
+  `FDB_LIBRARY_PATH` after each test instead of unsetting it.
 - [#161] The `php` compose service runs as the host user (`HOST_UID:HOST_GID`, default
   `1000:1000`, `HOME=/tmp`), so `.php-cs-fixer.cache`, `.phpunit.cache`, `composer.lock`
   and `vendor/` written in the container belong to the host user and host-side `bin/lint.sh`

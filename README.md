@@ -3,7 +3,7 @@
 [![CI](https://github.com/crazy-goat/fdb-php/actions/workflows/ci.yml/badge.svg)](https://github.com/crazy-goat/fdb-php/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A full-featured [FoundationDB](https://www.foundationdb.org/) client for PHP, built on PHP FFI bindings to `libfdb_c.so`.
+A full-featured [FoundationDB](https://www.foundationdb.org/) client for PHP, built on PHP FFI bindings to `libfdb_c`.
 
 ## Features
 
@@ -30,7 +30,7 @@ A full-featured [FoundationDB](https://www.foundationdb.org/) client for PHP, bu
 - PHP 8.2+
 - `ext-ffi` — PHP FFI extension
 - `ext-gmp` — for arbitrary-precision integers in the tuple layer (optional)
-- `libfdb_c.so` — FoundationDB C client library ([install guide](https://apple.github.io/foundationdb/getting-started-linux.html))
+- `libfdb_c` — FoundationDB C client library (`libfdb_c.so` on Linux, `libfdb_c.dylib` on macOS, [install guide](https://apple.github.io/foundationdb/getting-started-linux.html))
 
 ## Installation
 
@@ -47,9 +47,10 @@ sudo dpkg -i foundationdb-clients_7.3.75-1_amd64.deb
 
 ### Pinning the client library path (recommended in production)
 
-By default the library is loaded by its bare soname (`libfdb_c.so`), which is
-resolved through the dynamic linker search path (`LD_LIBRARY_PATH`,
-`RUNPATH`, …). A malicious library earlier on that path would execute
+By default the library is loaded by its bare soname (`libfdb_c.so` on Linux,
+`libfdb_c.dylib` on macOS), which is resolved through the dynamic linker
+search path (`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, `RUNPATH`, …). A
+malicious library earlier on that path would execute
 arbitrary code inside the PHP process. To eliminate this attack surface, pin
 the absolute path of the library:
 
