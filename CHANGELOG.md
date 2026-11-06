@@ -12,6 +12,9 @@
   from the matching `CHANGELOG.md` section.
 
 ### Changed
+- [#149] The CI `lint` job runs on PHP 8.2 instead of 8.4, matching the project minimum
+  (`php: >=8.2` and `config.platform.php` 8.2.0). This removes the PHP-CS-Fixer
+  minimum-version warning and checks the formatter against the oldest supported syntax.
 - [#147] `bin/lint.sh` runs `actionlint` 1.7.7 over `.github/workflows/*.yml`, including
   shellcheck inside `run:` blocks, so workflow defects are caught before a push. The preflight
   names the CI version and install command, the CI `lint` job installs the pinned release, and
