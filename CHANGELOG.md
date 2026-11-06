@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- [#159] The five FDB services in `docker-compose.yml` use `restart: unless-stopped`, so
+  the worker that `RebootWorkerTest` intentionally reboots comes back and repeated
+  `make test` / `make test-integration` runs leave the compose cluster healthy. A failed
+  `rebootWorker()` now fails the test instead of passing with fewer assertions, and the
+  post-reboot check waits (bounded) for the cluster to become available again.
 - [#160] `docker-compose.yml` gives the blob manager a shared `file:///var/fdb/blobs/`
   store (`fdb-blobs` volume, `--knob-bg_url` in `docker/fdb/start-fdb.sh`) and an
   FDB healthcheck that fails on `Error="backup_invalid_url"`, so the blob manager

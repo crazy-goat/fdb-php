@@ -1,3 +1,7 @@
+# RebootWorkerTest asks a storage process to suspend, then exit, on purpose.
+# The five FDB services restart automatically so that a rebooted worker comes
+# back and repeated test runs find a healthy cluster. `docker compose down`
+# still stops them, because the containers are stopped explicitly.
 services:
   fdb-coord-1:
     image: foundationdb/foundationdb:7.3.75
@@ -14,6 +18,7 @@ services:
       - fdb-blobs:/var/fdb/blobs
       - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
     entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
       interval: 10s
@@ -36,6 +41,7 @@ services:
       - fdb-blobs:/var/fdb/blobs
       - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
     entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
       interval: 10s
@@ -58,6 +64,7 @@ services:
       - fdb-blobs:/var/fdb/blobs
       - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
     entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
       interval: 10s
@@ -84,6 +91,7 @@ services:
       - fdb-blobs:/var/fdb/blobs
       - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
     entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
       interval: 10s
@@ -110,6 +118,7 @@ services:
       - fdb-blobs:/var/fdb/blobs
       - ./docker/fdb/start-fdb.sh:/usr/local/bin/start-fdb.sh:ro
     entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "/usr/local/bin/start-fdb.sh"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "! grep -q 'Error=\"backup_invalid_url\"' /var/fdb/logs/*.xml 2>/dev/null"]
       interval: 10s
