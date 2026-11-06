@@ -14,9 +14,21 @@ step() {
 }
 
 # Versions and asset checksums live in .lint-tools.env so local lint and CI cannot drift.
+if [ ! -r ./.lint-tools.env ]; then
+    echo "error: .lint-tools.env is missing or not readable in $(pwd)." >&2
+    echo "  It is tracked in the repository; restore it from git (git checkout -- .lint-tools.env)." >&2
+    exit 1
+fi
 # shellcheck source=.lint-tools.env
 # shellcheck disable=SC1091
 . ./.lint-tools.env
+
+# Fail before any PHP tool runs, not halfway through the checks.
+if [ ! -f vendor/autoload.php ] || [ ! -f vendor/bin/php-cs-fixer ]; then
+    echo "error: Composer dependencies are missing (vendor/autoload.php or vendor/bin/php-cs-fixer)." >&2
+    echo "  Run \"composer install\" first (bin/worktree-setup.sh does it in a new worktree)." >&2
+    exit 1
+fi
 
 SHELLCHECK_INSTALL="set -euo pipefail
 tmp=\$(mktemp)
@@ -66,15 +78,53 @@ version_older_than() {
     [ "$installed_patch" -lt "$expected_patch" ]
 }
 
+host_platform() {
+    local os arch
+    os=$(uname -s)
+    arch=$(uname -m)
+    case "$os" in
+        Darwin)
+            echo "macos"
+            ;;
+        Linux)
+            case "$arch" in
+                x86_64|amd64) echo "linux-x86_64" ;;
+                *) echo "linux-$arch" ;;
+            esac
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+print_install_hint() {
+    local tool="$1" expected="$2" release="$3" install_command="$4"
+
+    case "$(host_platform)" in
+        linux-x86_64)
+            echo "  Linux x86_64 (as in CI): $install_command" >&2
+            ;;
+        macos)
+            echo "  macOS (Homebrew): brew install $tool" >&2
+            echo "  Or download the macOS asset for $expected from $release and put it on PATH." >&2
+            ;;
+        *)
+            echo "  Download the asset for your platform from $release and put it on PATH." >&2
+            echo "  CI pins the Linux x86_64 asset, so lint results are only guaranteed on Linux x86_64 and macOS." >&2
+            ;;
+    esac
+    echo "  Make sure the directory you install into is on PATH." >&2
+}
+
 require_tool() {
     local tool="$1" expected="$2" release="$3" install_command="$4"
     local installed
 
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: $tool is not installed; CI uses $tool $expected." >&2
-        echo "  Install it from $release" >&2
-        echo "  Linux x86_64 (as in CI): $install_command" >&2
-        echo "  Make sure \"\$HOME/.local/bin\" is on PATH." >&2
+        echo "  Install $expected from $release" >&2
+        print_install_hint "$tool" "$expected" "$release" "$install_command"
         exit 1
     fi
 
@@ -86,14 +136,30 @@ require_tool() {
     if version_older_than "$installed" "$expected"; then
         echo "error: $tool $installed is older than the CI version $expected." >&2
         echo "  Install $expected from $release" >&2
-        echo "  Linux x86_64 (as in CI): $install_command" >&2
-        echo "  Make sure \"\$HOME/.local/bin\" is on PATH." >&2
+        print_install_hint "$tool" "$expected" "$release" "$install_command"
         exit 1
     fi
     if [ "$installed" != "$expected" ]; then
         echo "warning: $tool $installed is installed; CI uses $expected." >&2
         echo "  Lint results may differ; install the CI version from $release." >&2
     fi
+}
+
+# One file per run and a sticky status: a later passing file must not hide an earlier failure.
+run_shellcheck() {
+    local status=0 file
+    while IFS= read -r -d '' file; do
+        shellcheck "$file" || status=1
+    done < <(git ls-files -z '*.sh')
+    return "$status"
+}
+
+run_hadolint() {
+    local status=0 file
+    while IFS= read -r -d '' file; do
+        hadolint "$file" || status=1
+    done < <(git ls-files -z '*Dockerfile*')
+    return "$status"
 }
 
 require_tool shellcheck "$LINT_SHELLCHECK_VERSION" \
@@ -114,8 +180,8 @@ fi
 step "php-cs-fixer" vendor/bin/php-cs-fixer fix --dry-run --diff --show-progress=none
 step "rector" vendor/bin/rector process --dry-run --no-progress-bar
 step "phpstan" vendor/bin/phpstan analyse --memory-limit=512M --no-progress
-step "shellcheck" bash -c 'git ls-files -z "*.sh" | xargs -0 -r shellcheck'
-step "hadolint" bash -c 'git ls-files -z "*Dockerfile*" | xargs -0 -r hadolint'
+step "shellcheck" run_shellcheck
+step "hadolint" run_hadolint
 step "actionlint" actionlint
 
 if [ "${#failed[@]}" -gt 0 ]; then

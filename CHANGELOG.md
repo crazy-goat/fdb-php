@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- [#163] `bin/lint.sh` is portable and fails fast: it checks `.lint-tools.env` and `vendor/`
+  before running anything, replaces the BSD-incompatible `xargs -0 -r` pipelines with bash
+  loops that keep a failure from being masked by a later file, and prints platform-aware
+  install hints (Linux x86_64, macOS/Homebrew, other platforms via the release assets).
 - [#159] The five FDB services in `docker-compose.yml` use `restart: unless-stopped`, so
   the worker that `RebootWorkerTest` intentionally reboots comes back and repeated
   `make test` / `make test-integration` runs leave the compose cluster healthy. A failed
