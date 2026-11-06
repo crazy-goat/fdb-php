@@ -34,6 +34,10 @@
   (repository setting), which makes the actor check unnecessary.
 
 ### Fixed
+- [#138] `make test`, `make test-unit` and `make test-integration` call `vendor/bin/phpunit`
+  directly instead of going through Composer, so the 300 s default `process-timeout` no longer
+  kills the suite before it finishes. `composer test`, `composer test:unit` and
+  `composer test:integration` are unchanged.
 - [#139] `docker-compose.yml`: the `fdb-config` job retries the initial cluster configuration,
   waits for `The database is available` and fails after 120 s instead of silently continuing,
   and configures `tenant_mode=optional_experimental` (retried until `Configuration changed`,
