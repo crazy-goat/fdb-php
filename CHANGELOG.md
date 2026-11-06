@@ -34,6 +34,9 @@
   (repository setting), which makes the actor check unnecessary.
 
 ### Fixed
+- [#150] Composer dependency resolution targets PHP 8.2.0 (`config.platform`), so a
+  worktree installed on a PHP 8.4+ host produces a `vendor/` tree that also runs in the
+  PHP 8.2 `php` container.
 - [#119] Makefile targets `fdb-status` and `fdb-cli` use the existing `fdb-config`
   service instead of the missing `fdb` service.
 - [#126] The nightly `Binding tester` workflow waits for `The database is available` (the old

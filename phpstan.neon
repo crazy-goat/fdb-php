@@ -1,4 +1,7 @@
 parameters:
+    # Composer resolves dependencies for PHP 8.2 (config.platform.php), which would
+    # also make PHPStan analyse for 8.2. Lint runs on PHP 8.4; keep that target.
+    phpVersion: 80400
     level: 9
     paths:
         - src
