@@ -27,10 +27,6 @@ COMPARE_ARGS=()
 if [ -n "$COMPARE" ]; then
     COMPARE_ARGS=(--compare "$COMPARE")
 fi
-COMPARE_ARGS=()
-if [ -n "${BINDINGTESTER_COMPARE:-}" ]; then
-    COMPARE_ARGS=(--compare "${BINDINGTESTER_COMPARE}")
-fi
 
 SUITES=("$@")
 if [ ${#SUITES[@]} -eq 0 ]; then
