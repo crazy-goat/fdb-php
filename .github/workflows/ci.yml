@@ -110,9 +110,9 @@ jobs:
           coverage: none
 
       # The library-path unit test skips without a real libfdb_c, so install the
-      # client in one matrix entry to exercise the pinned absolute path.
+      # client in every matrix entry: the native FFI binding must be exercised
+      # on the declared minimum (PHP 8.2), not only on the newest version.
       - name: Install FoundationDB client library
-        if: matrix.php == '8.4'
         run: |
           wget -q "https://github.com/apple/foundationdb/releases/download/7.3.75/foundationdb-clients_7.3.75-1_amd64.deb" -O /tmp/fdb-clients.deb
           sudo dpkg -i /tmp/fdb-clients.deb
