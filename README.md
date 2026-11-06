@@ -400,10 +400,11 @@ composer install
 ### Linting
 
 ```bash
-composer lint          # PHPStan + PHPCS + Rector (dry-run)
+composer lint          # All checks (PHP-CS-Fixer, Rector, PHPStan, shellcheck, hadolint)
 composer lint:fix      # Auto-fix code style
 composer phpstan       # PHPStan level 9
-composer cs            # PHP CodeSniffer
+composer cs            # PHP-CS-Fixer (dry-run)
+composer cs-fix        # Fix code style with PHP-CS-Fixer
 composer rector        # Rector dry-run
 ```
 

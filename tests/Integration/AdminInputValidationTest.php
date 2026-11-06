@@ -389,7 +389,7 @@ final class AdminInputValidationTest extends TestCase
 
         // No rejected input may have created a tenant, in particular none of
         // the pathological slash/control-byte names.
-        $slashTenants = array_filter($tenants, static fn (string $t): bool => str_contains($t, '/'));
+        $slashTenants = array_filter($tenants, static fn(string $t): bool => str_contains($t, '/'));
         self::assertSame(
             [],
             $slashTenants,

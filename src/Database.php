@@ -112,7 +112,7 @@ final class Database implements Transactor, ReadTransactor
      */
     public function readTransact(callable $fn): mixed
     {
-        $writeCall = (static fn (Transaction $tr) => $fn($tr->snapshot()));
+        $writeCall = (static fn(Transaction $tr) => $fn($tr->snapshot()));
 
         return $this->runWithRetry($writeCall);
     }
@@ -120,7 +120,7 @@ final class Database implements Transactor, ReadTransactor
     public function get(string|KeyConvertible $key): ?string
     {
         /** @var ?string */
-        return $this->transact(fn (Transaction $tr): ?string => $tr->get($key)->await());
+        return $this->transact(fn(Transaction $tr): ?string => $tr->get($key)->await());
     }
 
     public function set(string|KeyConvertible $key, string $value): void
@@ -396,7 +396,7 @@ final class Database implements Transactor, ReadTransactor
     ): array {
         /** @var list<KeyValue> */
         return $this->transact(
-            fn (Transaction $tr): array => $tr->getRange($begin, $end, $options)->toArray(),
+            fn(Transaction $tr): array => $tr->getRange($begin, $end, $options)->toArray(),
         );
     }
 
@@ -409,7 +409,7 @@ final class Database implements Transactor, ReadTransactor
     ): array {
         /** @var list<KeyValue> */
         return $this->transact(
-            fn (Transaction $tr): array => $tr->getRangeStartsWith($prefix, $options)->toArray(),
+            fn(Transaction $tr): array => $tr->getRangeStartsWith($prefix, $options)->toArray(),
         );
     }
 
@@ -423,7 +423,7 @@ final class Database implements Transactor, ReadTransactor
     ): array {
         /** @var list<KeyValue> */
         return $this->transact(
-            fn (Transaction $tr): array => $tr->getRangeAll($begin, $end, $options),
+            fn(Transaction $tr): array => $tr->getRangeAll($begin, $end, $options),
         );
     }
 
@@ -436,14 +436,14 @@ final class Database implements Transactor, ReadTransactor
     ): array {
         /** @var list<KeyValue> */
         return $this->transact(
-            fn (Transaction $tr): array => $tr->getRangeAllStartsWith($prefix, $options),
+            fn(Transaction $tr): array => $tr->getRangeAllStartsWith($prefix, $options),
         );
     }
 
     public function getKey(KeySelector $selector): string
     {
         /** @var string */
-        return $this->transact(fn (Transaction $tr): string => $tr->getKey($selector)->await());
+        return $this->transact(fn(Transaction $tr): string => $tr->getKey($selector)->await());
     }
 
     public function watch(string $key): FutureVoid
@@ -510,7 +510,7 @@ final class Database implements Transactor, ReadTransactor
     public function getInt(string|KeyConvertible $key): ?int
     {
         /** @var ?int */
-        return $this->transact(fn (Transaction $tr): ?int => $tr->getInt($key));
+        return $this->transact(fn(Transaction $tr): ?int => $tr->getInt($key));
     }
 
     public function add(string $key, int $param): void
@@ -601,7 +601,7 @@ final class Database implements Transactor, ReadTransactor
     {
         /** @var int */
         return $this->transact(
-            fn (Transaction $tr): int => $tr->getEstimatedRangeSizeBytes($begin, $end)->await(),
+            fn(Transaction $tr): int => $tr->getEstimatedRangeSizeBytes($begin, $end)->await(),
         );
     }
 
@@ -612,7 +612,7 @@ final class Database implements Transactor, ReadTransactor
     {
         /** @var list<string> */
         return $this->transact(
-            fn (Transaction $tr): array => $tr->getRangeSplitPoints($begin, $end, $chunkSize)->await(),
+            fn(Transaction $tr): array => $tr->getRangeSplitPoints($begin, $end, $chunkSize)->await(),
         );
     }
 

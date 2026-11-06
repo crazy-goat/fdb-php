@@ -33,7 +33,7 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/small', 'hello chunked world');
 
         self::assertSame('hello chunked world', $db->transact(
-            fn ($tr) => $tr->getValueChunked('chunk/small'),
+            fn($tr) => $tr->getValueChunked('chunk/small'),
         ));
     }
 
@@ -45,7 +45,7 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/empty', '');
 
         self::assertSame('', $db->transact(
-            fn ($tr) => $tr->getValueChunked('chunk/empty'),
+            fn($tr) => $tr->getValueChunked('chunk/empty'),
         ));
     }
 
@@ -55,7 +55,7 @@ final class ChunkedValuesTest extends TestCase
         $db = $this->getDatabase();
 
         self::assertNull($db->transact(
-            fn ($tr) => $tr->getValueChunked('chunk/missing'),
+            fn($tr) => $tr->getValueChunked('chunk/missing'),
         ));
     }
 
@@ -70,7 +70,7 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/multi', $value);
 
         self::assertSame($value, $db->transact(
-            fn ($tr) => $tr->getValueChunked('chunk/multi'),
+            fn($tr) => $tr->getValueChunked('chunk/multi'),
         ));
     }
 
@@ -85,7 +85,7 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/boundary', $value, 128);
 
         self::assertSame($value, $db->transact(
-            fn ($tr) => $tr->getValueChunked('chunk/boundary'),
+            fn($tr) => $tr->getValueChunked('chunk/boundary'),
         ));
     }
 
@@ -96,7 +96,7 @@ final class ChunkedValuesTest extends TestCase
 
         $db->setValueChunked('chunk/snap', 'snapshot value');
 
-        $read = $db->readTransact(fn ($snapshot) => $snapshot->getValueChunked('chunk/snap'));
+        $read = $db->readTransact(fn($snapshot) => $snapshot->getValueChunked('chunk/snap'));
 
         self::assertSame('snapshot value', $read);
     }
@@ -110,7 +110,7 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked($subspace->pack(['blob', 1]), str_repeat('s', 250000));
 
         self::assertSame(250000, strlen((string) $db->transact(
-            fn ($tr) => $tr->getValueChunked($subspace->pack(['blob', 1])),
+            fn($tr) => $tr->getValueChunked($subspace->pack(['blob', 1])),
         )));
     }
 
@@ -128,12 +128,12 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/shrink', $small);
 
         self::assertSame($small, $db->transact(
-            fn ($tr) => $tr->getValueChunked('chunk/shrink'),
+            fn($tr) => $tr->getValueChunked('chunk/shrink'),
         ));
 
         // No leftovers: exactly ceil(150000/100000) = 2 chunks + meta
         $count = $db->transact(
-            fn ($tr): int => count($tr->getRangeAll(
+            fn($tr): int => count($tr->getRangeAll(
                 ChunkKeyCodec::namespaceBegin('chunk/shrink'),
                 ChunkKeyCodec::namespaceEnd('chunk/shrink'),
             )),
@@ -149,10 +149,10 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/gone', str_repeat('x', 300000));
         $db->deleteValueChunked('chunk/gone');
 
-        self::assertNull($db->transact(fn ($tr) => $tr->getValueChunked('chunk/gone')));
+        self::assertNull($db->transact(fn($tr) => $tr->getValueChunked('chunk/gone')));
 
         $count = $db->transact(
-            fn ($tr): int => count($tr->getRangeAll(
+            fn($tr): int => count($tr->getRangeAll(
                 ChunkKeyCodec::namespaceBegin('chunk/gone'),
                 ChunkKeyCodec::namespaceEnd('chunk/gone'),
             )),
@@ -179,7 +179,7 @@ final class ChunkedValuesTest extends TestCase
             self::assertSame(MutationBudget::SPLIT_TARGET_BYTES, $e->maxSize);
         }
 
-        self::assertNull($db->transact(fn ($tr) => $tr->getValueChunked('chunk/too-large')));
+        self::assertNull($db->transact(fn($tr) => $tr->getValueChunked('chunk/too-large')));
     }
 
     #[Test]
@@ -191,7 +191,7 @@ final class ChunkedValuesTest extends TestCase
 
         $db->setValueChunked('chunk/at-cap', $atCap);
 
-        $read = $db->transact(fn ($tr) => $tr->getValueChunked('chunk/at-cap'));
+        $read = $db->transact(fn($tr) => $tr->getValueChunked('chunk/at-cap'));
         self::assertNotNull($read);
         self::assertSame(MutationBudget::SPLIT_TARGET_BYTES, strlen($read));
     }
@@ -231,7 +231,7 @@ final class ChunkedValuesTest extends TestCase
 
         // The transaction was aborted by the exception — nothing was written,
         // and the database stays usable.
-        self::assertNull($db->transact(fn ($tr) => $tr->getValueChunked($baseKey)));
+        self::assertNull($db->transact(fn($tr) => $tr->getValueChunked($baseKey)));
 
         $db->set('chunk/key-limit/after', 'ok');
         self::assertSame('ok', $db->get('chunk/key-limit/after'));
@@ -253,7 +253,7 @@ final class ChunkedValuesTest extends TestCase
 
         $db->setValueChunked('chunk/huge', $value, atomic: false);
 
-        $read = $db->transact(fn ($tr) => $tr->getValueChunked('chunk/huge'));
+        $read = $db->transact(fn($tr) => $tr->getValueChunked('chunk/huge'));
         self::assertNotNull($read);
         self::assertSame(strlen($value), strlen($read));
         self::assertSame($value, $read);
@@ -267,14 +267,14 @@ final class ChunkedValuesTest extends TestCase
         $db->setValueChunked('chunk/gen', str_repeat('a', 300000), atomic: false);
         $db->setValueChunked('chunk/gen', str_repeat('b', 50000), atomic: false);
 
-        $read = $db->transact(fn ($tr) => $tr->getValueChunked('chunk/gen'));
+        $read = $db->transact(fn($tr) => $tr->getValueChunked('chunk/gen'));
         self::assertNotNull($read);
         self::assertSame(50000, strlen($read));
         self::assertMatchesRegularExpression('/^b+$/', $read);
 
         // Old generation must be gone: exactly meta + ceil(50000/100000) = 1 chunk
         $count = $db->transact(
-            fn ($tr): int => count($tr->getRangeAll(
+            fn($tr): int => count($tr->getRangeAll(
                 ChunkKeyCodec::namespaceBegin('chunk/gen'),
                 ChunkKeyCodec::namespaceEnd('chunk/gen'),
             )),
@@ -293,7 +293,7 @@ final class ChunkedValuesTest extends TestCase
         $db->set(ChunkKeyCodec::metaKey('chunk/foreign'), 'not-a-meta-record');
 
         $this->expectException(ChunkedValueCorruptedException::class);
-        $db->transact(fn ($tr) => $tr->getValueChunked('chunk/foreign'));
+        $db->transact(fn($tr) => $tr->getValueChunked('chunk/foreign'));
     }
 
     #[Test]
@@ -314,6 +314,6 @@ final class ChunkedValuesTest extends TestCase
 
         $this->expectException(ChunkedValueCorruptedException::class);
         $this->expectExceptionMessage('declares 3 chunks');
-        $db->transact(fn ($tr) => $tr->getValueChunked('chunk/broken'));
+        $db->transact(fn($tr) => $tr->getValueChunked('chunk/broken'));
     }
 }

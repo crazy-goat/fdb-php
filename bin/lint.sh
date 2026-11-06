@@ -15,10 +15,10 @@ step() {
 
 if [ "$FIX" = 1 ]; then
     vendor/bin/rector process --no-progress-bar
-    vendor/bin/phpcbf --standard=phpcs.xml.dist || true # exits 1 after fixing
+    vendor/bin/php-cs-fixer fix --show-progress=none
 fi
 
-step "phpcs" vendor/bin/phpcs --standard=phpcs.xml.dist
+step "php-cs-fixer" vendor/bin/php-cs-fixer fix --dry-run --diff --show-progress=none
 step "rector" vendor/bin/rector process --dry-run --no-progress-bar
 step "phpstan" vendor/bin/phpstan analyse --memory-limit=512M --no-progress
 step "shellcheck" bash -c 'git ls-files -z "*.sh" | xargs -0 -r shellcheck'

@@ -134,7 +134,7 @@ final class DirectoryPrefixValidationTest extends TestCase
     {
         self::expectNotToPerformAssertions();
 
-        $this->validate('myPrefix', '', static fn (string $_): bool => false, static fn (string $_): bool => false);
+        $this->validate('myPrefix', '', static fn(string $_): bool => false, static fn(string $_): bool => false);
     }
 
     #[Test]
@@ -144,7 +144,7 @@ final class DirectoryPrefixValidationTest extends TestCase
         // prefix must be accepted.
         self::expectNotToPerformAssertions();
 
-        $this->validate("\xAA\xBB\xCC", '', static fn (string $_): bool => false, static fn (string $_): bool => false);
+        $this->validate("\xAA\xBB\xCC", '', static fn(string $_): bool => false, static fn(string $_): bool => false);
     }
 
     #[Test]
@@ -152,7 +152,7 @@ final class DirectoryPrefixValidationTest extends TestCase
     {
         self::expectNotToPerformAssertions();
 
-        $this->validate('x', '', static fn (string $_): bool => false, static fn (string $_): bool => false);
+        $this->validate('x', '', static fn(string $_): bool => false, static fn(string $_): bool => false);
     }
 
     #[Test]
@@ -197,7 +197,7 @@ final class DirectoryPrefixValidationTest extends TestCase
 
         // Predicates aren't reached, but supply non-conflicting stubs to
         // make the test fail loudly if the guard ever moves.
-        $this->validate('', '', static fn (string $_): bool => false, static fn (string $_): bool => false);
+        $this->validate('', '', static fn(string $_): bool => false, static fn(string $_): bool => false);
     }
 
     #[Test]
@@ -210,8 +210,8 @@ final class DirectoryPrefixValidationTest extends TestCase
         $this->validate(
             'collideMeta',
             '',
-            static fn (string $_): bool => true,
-            static fn (string $_): bool => false,
+            static fn(string $_): bool => true,
+            static fn(string $_): bool => false,
         );
     }
 
@@ -224,8 +224,8 @@ final class DirectoryPrefixValidationTest extends TestCase
         $this->validate(
             'collideContent',
             '',
-            static fn (string $_): bool => false,
-            static fn (string $_): bool => true,
+            static fn(string $_): bool => false,
+            static fn(string $_): bool => true,
         );
     }
 
@@ -240,8 +240,8 @@ final class DirectoryPrefixValidationTest extends TestCase
         $this->validate(
             'both',
             '',
-            static fn (string $_): bool => true,
-            static fn (string $_): bool => true,
+            static fn(string $_): bool => true,
+            static fn(string $_): bool => true,
         );
     }
 
@@ -252,8 +252,8 @@ final class DirectoryPrefixValidationTest extends TestCase
             $this->validate(
                 "maul\x01\xFF",
                 '',
-                static fn (string $_): bool => true,
-                static fn (string $_): bool => false,
+                static fn(string $_): bool => true,
+                static fn(string $_): bool => false,
             );
             self::fail('Expected DirectoryException was not thrown.');
         } catch (\CrazyGoat\FoundationDB\Directory\DirectoryException $e) {
@@ -272,8 +272,8 @@ final class DirectoryPrefixValidationTest extends TestCase
             $this->validate(
                 "user\x01~data",
                 '',
-                static fn (string $_): bool => false,
-                static fn (string $_): bool => true,
+                static fn(string $_): bool => false,
+                static fn(string $_): bool => true,
             );
             self::fail('Expected DirectoryException was not thrown.');
         } catch (\CrazyGoat\FoundationDB\Directory\DirectoryException $e) {

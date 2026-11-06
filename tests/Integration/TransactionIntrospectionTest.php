@@ -45,7 +45,7 @@ final class TransactionIntrospectionTest extends TestCase
         $db = $this->getDatabase();
 
         $cost = $db->transact(
-            static fn (Transaction $tr): int => $tr->snapshot()->getTotalCost()->await(),
+            static fn(Transaction $tr): int => $tr->snapshot()->getTotalCost()->await(),
         );
 
         self::assertGreaterThanOrEqual(0, $cost);
@@ -68,7 +68,7 @@ final class TransactionIntrospectionTest extends TestCase
         $db = $this->getDatabase();
 
         $duration = $db->transact(
-            static fn (Transaction $tr): float => $tr->snapshot()->getTagThrottledDuration()->await(),
+            static fn(Transaction $tr): float => $tr->snapshot()->getTagThrottledDuration()->await(),
         );
 
         self::assertSame(0.0, $duration);
