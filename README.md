@@ -29,7 +29,7 @@ A full-featured [FoundationDB](https://www.foundationdb.org/) client for PHP, bu
 
 - PHP 8.2+
 - `ext-ffi` — PHP FFI extension
-- `ext-gmp` — for arbitrary-precision integers in the tuple layer (optional)
+- `ext-gmp` — optional; required for arbitrary-precision integers in the tuple layer
 - `libfdb_c` — FoundationDB C client library (`libfdb_c.so` on Linux, `libfdb_c.dylib` on macOS, [install guide](https://apple.github.io/foundationdb/getting-started-linux.html))
 
 ## Installation
@@ -389,6 +389,7 @@ The development process and the project commands are described in [AGENTS.md](AG
 ### Prerequisites
 
 - PHP 8.2+ with `ext-ffi`
+- `ext-gmp` — optional; required for arbitrary-precision integers in the tuple layer
 - Docker + Docker Compose (for integration tests)
 - Composer
 - [shellcheck](https://github.com/koalaman/shellcheck/releases), [hadolint](https://github.com/hadolint/hadolint/releases) and [actionlint](https://github.com/rhysd/actionlint/releases) (lint; versions and checksums pinned in `.lint-tools.env`)

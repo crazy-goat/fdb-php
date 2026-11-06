@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- [#167] `AGENTS.md`, `README.md` and `composer.json` describe `ext-gmp` consistently as
+  optional and only required for arbitrary-precision integers in the tuple layer. The
+  `NativeClientPartialInitTest` comment no longer claims CI has no real `libfdb_c`; the
+  stub keeps the singleton lookup independent of whether one is installed.
 - [#166] The five FDB services in `docker-compose.yml` share YAML anchors for the image,
   coordinator string, environment, entrypoint, restart policy, healthcheck and common
   volumes, so the coordinator string has a single source of truth and `fdb-config` and

@@ -236,8 +236,9 @@ final class NativeClientPartialInitTest extends TestCase
     {
         $this->stubSet('fdb_phpunit_stub_set_setup_result', 10);
         // checkError() throws FDBException, whose constructor resolves the
-        // error message through NativeClient::getInstance() — on CI the real
-        // libfdb_c.so is not installed, so install the stub as the singleton.
+        // error message through NativeClient::getInstance(). Install the stub
+        // as the singleton so the lookup is deterministic and independent of
+        // whether a real libfdb_c happens to be installed.
         $client = $this->makeClient();
         $this->installSingleton($client);
 

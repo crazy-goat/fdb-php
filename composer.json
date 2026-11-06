@@ -20,7 +20,7 @@
     },
     "suggest": {
         "ext-ffi": "Required for the native FoundationDB client bindings",
-        "ext-gmp": "Required for arbitrary-precision integer support in the tuple layer"
+        "ext-gmp": "Optional; required for arbitrary-precision integer support in the tuple layer"
     },
     "autoload": {
         "psr-4": {
