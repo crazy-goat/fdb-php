@@ -45,7 +45,9 @@ if [[ -f "$dir/.env.worktree" ]]; then
     export COMPOSE_ENV_FILES=.env.worktree
     if [[ -x bin/worktree-teardown.sh ]]; then bin/worktree-teardown.sh; fi
     for f in docker-compose*.y*ml compose*.y*ml */docker-compose*.y*ml; do
-      [[ -f "$f" ]] && docker compose -f "$f" down -v --remove-orphans 2>/dev/null || true
+      if [[ -f "$f" ]]; then
+        docker compose -f "$f" down -v --remove-orphans 2>/dev/null || true
+      fi
     done
   )
 fi
