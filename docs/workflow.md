@@ -128,7 +128,8 @@ gh pr checks --watch
 - Use the PR template. Put `Closes #<N>` in the description.
 - The required check is `ci-ok`. If CI fails, read the log (`gh run view --log-failed`),
   and go back to **step 3**. Do not disable or skip a check to make it green.
-- PRs from first-time contributors need a maintainer to approve the workflow run.
+- PRs from external contributors need a maintainer to approve the workflow run (repository
+  setting).
 
 ## 6. Merge
 

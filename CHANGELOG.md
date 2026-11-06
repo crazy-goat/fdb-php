@@ -21,6 +21,12 @@
   `rector.php` no longer skips `StaticCallOnNonStaticToInstanceCallRector`, which Rector 2.6
   deprecated and no longer registers (the skip only printed a warning on every run).
 
+### Removed
+- [#128] CI: the redundant `check-actor` job is removed, together with the
+  `actions/github-script` dependency; `lint`, `unit-tests`, `e2e-tests` and `ci-ok` no longer
+  depend on it. Pull requests from forks need a maintainer's approval before workflows run
+  (repository setting), which makes the actor check unnecessary.
+
 ### Fixed
 - [#119] Makefile targets `fdb-status` and `fdb-cli` use the existing `fdb-config`
   service instead of the missing `fdb` service.
