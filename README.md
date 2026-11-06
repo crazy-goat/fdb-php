@@ -392,6 +392,10 @@ The development process and the project commands are described in [AGENTS.md](AG
 - Composer
 - [shellcheck](https://github.com/koalaman/shellcheck/releases), [hadolint](https://github.com/hadolint/hadolint/releases) and [actionlint](https://github.com/rhysd/actionlint/releases) (lint; versions and checksums pinned in `.lint-tools.env`)
 
+`bin/lint.sh` needs `composer install` first and is supported on Linux x86_64 (as in CI) and
+macOS. On macOS install the tools with `brew install shellcheck hadolint actionlint`; on other
+platforms download the release asset for your architecture (CI pins the Linux x86_64 assets).
+
 ### Setup
 
 ```bash

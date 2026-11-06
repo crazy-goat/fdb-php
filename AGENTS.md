@@ -48,9 +48,10 @@ Run `bin/lint.sh --fix` and then `bin/lint.sh` before committing. Fix by hand wh
 auto-fixed. Push only when `bin/lint.sh` and `composer test` pass (in a worktree: `bin/lint.sh`
 on the host and `make test`, see below). `bin/lint.sh` runs on the host, not in the php
 container; it needs `shellcheck`, `hadolint`, `actionlint` (versions and checksums pinned in
-`.lint-tools.env`) and `vendor/` from
-`composer install`. A missing or older tool fails the preflight in `bin/lint.sh` with the
-install command for the CI version.
+`.lint-tools.env`) and `vendor/` from `composer install`. The supported hosts are Linux x86_64
+(as in CI) and macOS; on other architectures install the matching release asset. The script
+fails fast when `vendor/` is missing and prints platform-aware install hints (a checksum-verifying
+command on Linux x86_64, `brew install` on macOS) when a tool is missing or older.
 
 ## FoundationDB and Docker
 
