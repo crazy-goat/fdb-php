@@ -13,13 +13,13 @@ ssh: ## Shell into PHP container
 	docker compose exec php bash
 
 test: ## Run all tests
-	docker compose exec php composer test
+	docker compose exec php vendor/bin/phpunit
 
 test-unit: ## Run unit tests only
-	docker compose exec php composer test:unit
+	docker compose exec php vendor/bin/phpunit --testsuite=Unit
 
 test-integration: ## Run integration tests only
-	docker compose exec php composer test:integration
+	docker compose exec php vendor/bin/phpunit --testsuite=Integration
 
 bindingtester: ## Run upstream binding tester suites (default: tuple api directory; override with SUITES="tuple")
 	docker compose exec php bash tests/bindingtester/run.sh $(SUITES)
