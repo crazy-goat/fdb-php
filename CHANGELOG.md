@@ -17,6 +17,9 @@
 - [#119] `docker-compose.yml`: host ports are variables with the old defaults (`FDB_COORD_1_PORT`
   4500, `FDB_COORD_2_PORT` 4501, `FDB_COORD_3_PORT` 4502, `FDB_SERVER_1_PORT` 4510,
   `FDB_SERVER_2_PORT` 4511), so that several worktrees can run side by side.
+- [#127] `tests/bindingtester/run.sh` builds `COMPARE_ARGS` once instead of twice, and
+  `rector.php` no longer skips `StaticCallOnNonStaticToInstanceCallRector`, which Rector 2.6
+  deprecated and no longer registers (the skip only printed a warning on every run).
 
 ### Fixed
 - [#119] Makefile targets `fdb-status` and `fdb-cli` use the existing `fdb-config`
