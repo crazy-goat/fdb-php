@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+- [#189] The FDB port numbers have a single source: the five `FDB_*_CONTAINER_PORT`
+  values in `.env`. `docker-compose.yml` reads them for each service's `FDB_PORT`,
+  the port-mapping target and default, and the coordinator string, so changing a port
+  in one place updates the service env, the host mapping and the cluster string
+  together. `bin/host-cluster-file.sh` prints the host-side cluster file from the
+  same values for host-side test runs.
+
 ## [1.2.1] - 2026-11-06
 
 ### Changed
