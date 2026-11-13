@@ -18,8 +18,9 @@ Everything is written in English (code, comments, docs, commits, issues).
 | `docs/` | User documentation (one file per topic), `bindingtester.md`, process docs |
 | `docker/php/` | PHP CLI image with `libfdb_c` (used by `docker-compose.yml`) |
 | `docker-compose.yml` | 3 coordinators, 2 servers, a `fdb-config` job and the `php` container |
+| `.env` | Single source of the five FDB port numbers (`FDB_*_CONTAINER_PORT`) |
 | `examples/` | Usage examples |
-| `bin/` | Worktree scripts and `pick-issue.sh` |
+| `bin/` | Worktree scripts, `pick-issue.sh` and `host-cluster-file.sh` |
 
 ## Commands
 
@@ -65,11 +66,20 @@ command on Linux x86_64, `brew install` on macOS) when a tool is missing or olde
   `docker compose down -v`.
 - Coordinators advertise `fdb-coord-N:PORT` inside the compose network. Tests that run in the
   php container use `FDB_CLUSTER_FILE=/app/fdb.cluster`, written by the container.
+- The FDB port numbers have one source of truth: the five `FDB_*_CONTAINER_PORT` values in
+  `.env` (`FDB_COORD_1_CONTAINER_PORT` 4500, `FDB_COORD_2_CONTAINER_PORT` 4501,
+  `FDB_COORD_3_CONTAINER_PORT` 4502, `FDB_SERVER_1_CONTAINER_PORT` 4510,
+  `FDB_SERVER_2_CONTAINER_PORT` 4511). `docker-compose.yml` reads them for every service's
+  `FDB_PORT`, the port-mapping target and default, and the coordinator string, so changing
+  a port in `.env` updates the service env, the host mapping and the cluster string together.
 - Host ports are variables with the old defaults: `FDB_COORD_1_PORT` (4500), `FDB_COORD_2_PORT`
   (4501), `FDB_COORD_3_PORT` (4502), `FDB_SERVER_1_PORT` (4510), `FDB_SERVER_2_PORT` (4511).
+  Each default is the matching container port from `.env`.
   `bin/worktree.sh` writes free ports to `.env.worktree`; load it with
   `set -a && . ./.env.worktree && set +a`. `bin/worktree-teardown.sh` stops the stack of the
   worktree. `bin/worktree-setup.sh` only runs `composer install`; it does not start FoundationDB.
+- `bin/host-cluster-file.sh` prints the host-side cluster file
+  (`127.0.0.1:<mapped port>`) from those same values for host-side test runs.
 - **Worktrees:** the published ports in `.env.worktree` are non-default, and the host cannot use
   them. FoundationDB requires the port a client dials to equal the address the coordinator
   advertises (4500-4502), otherwise the client aborts. So in a worktree: load `.env.worktree`,
@@ -84,7 +94,8 @@ command on Linux x86_64, `brew install` on macOS) when a tool is missing or olde
   `HOST_GID` first (CI sets them from `id -u`/`id -g`).
 - CI (`e2e-tests`) starts the cluster with the default ports, writes a host-side cluster file
   with `127.0.0.1:4500-4502` and sets `FDB_REBOOT_TEST_IP` to the container address of
-  `fdb-server-1`.
+  `fdb-server-1`. `bin/host-cluster-file.sh` builds that file from the same values the
+  compose stack uses; the workflow still writes it inline (follow-up: call the script).
 - Integration tests read `FDB_CLUSTER_FILE` and `FDB_REBOOT_TEST_IP` from the environment.
 - The binding tester (`make bindingtester`, see `docs/bindingtester.md`) runs nightly in
   `.github/workflows/bindingtester.yml`. It is not part of `ci-ok`.

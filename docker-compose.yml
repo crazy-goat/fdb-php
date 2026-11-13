@@ -5,9 +5,11 @@
 #
 # Shared pieces of the five FDB services. The coordinator string appears only
 # once in this file (x-fdb-cluster-file); every service reads the same value.
+# The FDB port numbers live only in .env (FDB_*_CONTAINER_PORT): they feed
+# FDB_PORT, the port-mapping target and default, and the coordinator string.
 x-fdb-image: &fdb-image foundationdb/foundationdb:7.3.75
 x-fdb-cluster-file: &fdb-cluster-file |
-  docker:docker@fdb-coord-1:4500,fdb-coord-2:4501,fdb-coord-3:4502
+  docker:docker@fdb-coord-1:${FDB_COORD_1_CONTAINER_PORT},fdb-coord-2:${FDB_COORD_2_CONTAINER_PORT},fdb-coord-3:${FDB_COORD_3_CONTAINER_PORT}
 x-fdb-environment: &fdb-environment
   FDB_BG_URL: "${FDB_BG_URL:-file:///var/fdb/blobs/}"
   FDB_CLUSTER_FILE_CONTENTS: *fdb-cluster-file
@@ -28,9 +30,9 @@ services:
     hostname: fdb-coord-1
     environment:
       <<: *fdb-environment
-      FDB_PORT: 4500
+      FDB_PORT: ${FDB_COORD_1_CONTAINER_PORT}
     ports:
-      - "${FDB_COORD_1_PORT:-4500}:4500"
+      - "${FDB_COORD_1_PORT:-${FDB_COORD_1_CONTAINER_PORT}}:${FDB_COORD_1_CONTAINER_PORT}"
     volumes:
       - fdb-coord-1-data:/var/fdb/data
       - *fdb-blobs-volume
@@ -44,9 +46,9 @@ services:
     hostname: fdb-coord-2
     environment:
       <<: *fdb-environment
-      FDB_PORT: 4501
+      FDB_PORT: ${FDB_COORD_2_CONTAINER_PORT}
     ports:
-      - "${FDB_COORD_2_PORT:-4501}:4501"
+      - "${FDB_COORD_2_PORT:-${FDB_COORD_2_CONTAINER_PORT}}:${FDB_COORD_2_CONTAINER_PORT}"
     volumes:
       - fdb-coord-2-data:/var/fdb/data
       - *fdb-blobs-volume
@@ -60,9 +62,9 @@ services:
     hostname: fdb-coord-3
     environment:
       <<: *fdb-environment
-      FDB_PORT: 4502
+      FDB_PORT: ${FDB_COORD_3_CONTAINER_PORT}
     ports:
-      - "${FDB_COORD_3_PORT:-4502}:4502"
+      - "${FDB_COORD_3_PORT:-${FDB_COORD_3_CONTAINER_PORT}}:${FDB_COORD_3_CONTAINER_PORT}"
     volumes:
       - fdb-coord-3-data:/var/fdb/data
       - *fdb-blobs-volume
@@ -80,9 +82,9 @@ services:
       - fdb-coord-3
     environment:
       <<: *fdb-environment
-      FDB_PORT: 4510
+      FDB_PORT: ${FDB_SERVER_1_CONTAINER_PORT}
     ports:
-      - "${FDB_SERVER_1_PORT:-4510}:4510"
+      - "${FDB_SERVER_1_PORT:-${FDB_SERVER_1_CONTAINER_PORT}}:${FDB_SERVER_1_CONTAINER_PORT}"
     volumes:
       - fdb-server-1-data:/var/fdb/data
       - *fdb-blobs-volume
@@ -100,9 +102,9 @@ services:
       - fdb-coord-3
     environment:
       <<: *fdb-environment
-      FDB_PORT: 4511
+      FDB_PORT: ${FDB_SERVER_2_CONTAINER_PORT}
     ports:
-      - "${FDB_SERVER_2_PORT:-4511}:4511"
+      - "${FDB_SERVER_2_PORT:-${FDB_SERVER_2_CONTAINER_PORT}}:${FDB_SERVER_2_CONTAINER_PORT}"
     volumes:
       - fdb-server-2-data:/var/fdb/data
       - *fdb-blobs-volume
@@ -126,7 +128,7 @@ services:
       fdb-server-2:
         condition: service_healthy
     environment:
-      FDB_PORT: 4500
+      FDB_PORT: ${FDB_COORD_1_CONTAINER_PORT}
       FDB_CLUSTER_FILE_CONTENTS: *fdb-cluster-file
     entrypoint:
       - /bin/sh
